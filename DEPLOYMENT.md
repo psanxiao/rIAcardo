@@ -243,7 +243,7 @@ la configuración con `tailscale serve status` y desactívala con
 
 Permite sincronizar el plan de entrenamiento con Google Calendar mediante una
 Service Account. Pasos detallados en la sección
-["Configuración de Google Calendar"](README.md#configuración-de-google-calendar-opcional)
+["Configuración de Google Calendar"](README.es.md#configuración-de-google-calendar-opcional)
 del README.
 
 ---

@@ -1,151 +1,154 @@
-# rIAcardo — Análisis de Rendimiento Deportivo
+# rIAcardo — Cycling & Running Performance Analytics
 
-Plataforma de análisis de rendimiento para ciclismo y running con coach IA (Groq).
+Platform for cycling and running performance analysis with an AI coach (Groq).
 
-## Instalación Rápida
+**🌐 [English](README.md) · [Español](README.es.md)**
 
-### Prerrequisitos
+## Quick Start
+
+### Prerequisites
 
 - Python 3.11+
 - Node.js 20+
-- Docker y Docker Compose
-- PostgreSQL 16+ (o usar Docker)
+- Docker and Docker Compose
+- PostgreSQL 16+ (or use Docker)
 
-### Pasos
+### Steps
 
-1. **Clonar el repositorio**:
+1. **Clone the repository**:
    ```bash
    git clone <repo-url>
    cd rIAcardo
    ```
 
-2. **Configurar el entorno virtual Python**:
+2. **Set up the Python virtual environment**:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-   Para desarrollo (tests):
+   For development (tests):
    ```bash
    pip install -r requirements-dev.txt
    ```
 
-3. **Levantar la base de datos**:
+3. **Start the database**:
    ```bash
    docker compose up -d db
    ```
-   Crea PostgreSQL en `localhost:5432` con la base de datos `riacardo`
-   (valores por defecto; se pueden cambiar en `.env`).
+   This creates PostgreSQL on `localhost:5432` with the `riacardo` database
+   (defaults; you can change them in `.env`).
 
-4. **Inicializar el esquema de la BD**:
+4. **Initialize the DB schema**:
    ```bash
    psql -h localhost -p 5432 -U postgres -d riacardo -f db/schema.sql
    ```
 
-5. **Configurar variables de entorno**:
+5. **Configure environment variables**:
    ```bash
    cp .env.example .env
    ```
-   Edita `.env` y rellena:
-   - `POSTGRES_*`: conexión a la BD
-   - `ENCRYPTION_KEY`: genera con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-   - `JWT_SECRET_KEY`: genera con `openssl rand -hex 32`
-   - `GROQ_API_KEY`: obtén una en [Groq Cloud](https://console.groq.com/)
-   - `ALLOWED_ORIGINS`: opcional, para CORS en red local
+   Edit `.env` and fill in:
+   - `POSTGRES_*`: database connection
+   - `ENCRYPTION_KEY`: generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   - `JWT_SECRET_KEY`: generate with `openssl rand -hex 32`
+   - `GROQ_API_KEY`: get one at [Groq Cloud](https://console.groq.com/)
+   - `ALLOWED_ORIGINS`: optional, extra CORS origins for local network use
 
-6. **Instalar dependencias del frontend**:
+6. **Install frontend dependencies**:
    ```bash
    cd frontend
    npm install --legacy-peer-deps
    cd ..
    ```
 
-7. **Arrancar la aplicación**:
-   - **Modo desarrollo** (backend + frontend separados):
+7. **Run the application**:
+   - **Development mode** (backend + frontend separately):
      ```bash
      ./run_network.sh
      ```
-   - **Modo producción** (FastAPI sirve el frontend compilado):
+   - **Production mode** (FastAPI serves the compiled frontend):
      ```bash
      cd frontend && npm run build && cd ..
      ./run_service.sh
      ```
 
-La app estará disponible en `http://localhost:9000` (prod) o `http://localhost:5173` (dev frontend).
+The app will be available at `http://localhost:9000` (production) or `http://localhost:5173` (dev frontend).
 
 ---
 
-## Despliegue
+## Deployment
 
-Para desplegar de forma persistente (por ejemplo en un servidor o un mac mini
-con Tailscale) consulta **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+For persistent deployment (e.g., on a server or a Tailscale-connected Mac mini),
+see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ---
 
-## Configuración de Google Calendar (opcional)
+## Google Calendar Setup (optional)
 
-Si quieres que rIAcardo sincronice los entrenamientos planificados con Google Calendar, necesitas crear tu propia **Service Account** de Google.
+If you want rIAcardo to sync planned workouts with Google Calendar, you need to
+create your own Google **Service Account**.
 
-### Pasos
+### Steps
 
-1. **Crear proyecto en Google Cloud Console**:
-   - Ve a [Google Cloud Console](https://console.cloud.google.com/)
-   - Crea un nuevo proyecto (ej. `riacardo-calendar`)
+1. **Create a project in Google Cloud Console**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project (e.g. `riacardo-calendar`)
 
-2. **Habilitar Google Calendar API**:
-   - APIs y Servicios → Biblioteca
-   - Busca "Google Calendar API" y habilita
+2. **Enable the Google Calendar API**:
+   - APIs and Services → Library
+   - Search for "Google Calendar API" and enable it
 
-3. **Crear Service Account**:
-   - IAM y Administración → Cuentas de servicio → Crear
-   - Dale un nombre (ej. `riacardo-bot`)
-   - Anota el email generado: `xxx@yyy.iam.gserviceaccount.com`
+3. **Create a Service Account**:
+   - IAM & Admin → Service Accounts → Create
+   - Give it a name (e.g. `riacardo-bot`)
+   - Note the generated email: `xxx@yyy.iam.gserviceaccount.com`
 
-4. **Generar clave JSON**:
-   - En la cuenta de servicio creada → pestaña "Claves" → Añadir clave → JSON
-   - Se descargará un fichero `riacardo-bot-xxx.json`
-   - **NO subas este fichero al repositorio** (ya está en `.gitignore`)
-   - Guárdalo como `google_service_account.json` en la raíz del proyecto
+4. **Generate a JSON key**:
+   - In the service account → "Keys" tab → Add key → JSON
+   - A file `riacardo-bot-xxx.json` will be downloaded
+   - **Do NOT upload this file to the repository** (it is already in `.gitignore`)
+   - Save it as `google_service_account.json` in the project root
 
-5. **Compartir tu calendario con la Service Account**:
-   - Abre Google Calendar en tu navegador
-   - Ajustes del calendario → "Compartir con personas específicas"
-   - Añade el email de la service account (`xxx@yyy.iam.gserviceaccount.com`)
-   - Permisos: "Hacer cambios y gestionar la compartición"
+5. **Share your calendar with the Service Account**:
+   - Open Google Calendar in your browser
+   - Calendar settings → "Share with specific people"
+   - Add the service account email (`xxx@yyy.iam.gserviceaccount.com`)
+   - Permissions: "Make changes to events and manage sharing"
 
-6. **Insertar la service account en la BD**:
+6. **Insert the service account into the DB**:
    ```bash
    psql -h localhost -p 5432 -U postgres -d riacardo -c \
      "INSERT INTO public.app_config (config_key, config_value)
       VALUES ('google_service_account_json', '$(cat google_service_account.json)');"
    ```
 
-7. **Conectar calendario en la app**:
-   - En rIAcardo, ve a Ajustes → Google Calendar
-   - Introduce el `calendar_id` de tu calendario (lo encuentras en los ajustes del calendario en Google Calendar)
-   - El `calendar_id` se guarda en `users.google_calendar_id`
+7. **Connect your calendar in the app**:
+   - In rIAcardo, go to Settings → Google Calendar
+   - Enter the `calendar_id` of your calendar (found in the calendar settings in Google Calendar)
+   - The `calendar_id` is stored in `users.google_calendar_id`
 
 ---
 
-## Flujo de Datos
+## Data Flow
 
-1.  **Ingesta de Datos**: Los datos de las actividades se extraen de ficheros `.fit` (Garmin Connect) y se almacenan en una base de datos PostgreSQL.
-2.  **Análisis de Rendimiento**: El sistema calcula métricas de rendimiento (NP, TSS, CTL, ATL, TSB, MMP, W', etc.) y genera análisis con IA (Groq).
-3.  **Visualización**: Los resultados se presentan en un dashboard interactivo (React + Chart.js) con gráficos de rendimiento, calendario de entrenamientos y coach IA.
+1.  **Data Ingestion**: Activity data is extracted from `.fit` files (Garmin Connect) and stored in a PostgreSQL database.
+2.  **Performance Analysis**: The system calculates performance metrics (NP, TSS, CTL, ATL, TSB, MMP, W', etc.) and generates AI analysis (Groq).
+3.  **Visualization**: Results are presented in an interactive dashboard (React + Chart.js) with performance charts, a training calendar and an AI coach.
 
-## Cálculos de Rendimiento y Algoritmos
+## Performance Calculations & Algorithms
 
-A continuación, se detalla cómo se calculan las principales métricas de rendimiento.
+The main performance metrics and how they are computed are detailed below.
 
-### 1. Potencia Normalizada (Normalized Power - NP)
+### 1. Normalized Power (NP)
 
-La Potencia Normalizada es una estimación de la potencia que un ciclista podría haber mantenido para el mismo costo fisiológico si su producción de potencia hubiera sido perfectamente constante. Proporciona una mejor medida del verdadero esfuerzo de un entrenamiento que la potencia media.
+Normalized Power is an estimate of the power a cyclist could have sustained for the same physiological cost had their power output been perfectly constant. It provides a better measure of the true effort of a workout than average power.
 
-**Algoritmo:**
-1.  Se calcula una media móvil de 30 segundos de los datos de potencia de la actividad.
-2.  Se elevan a la cuarta potencia los valores de esta media móvil.
-3.  Se calcula la media de los valores obtenidos en el paso anterior.
-4.  La Potencia Normalizada es la raíz cuarta de esta media.
+**Algorithm:**
+1.  A 30-second moving average of the power data of the activity is computed.
+2.  The values of this moving average are raised to the fourth power.
+3.  The mean of the values obtained in the previous step is computed.
+4.  Normalized Power is the fourth root of this mean.
 
 ```python
 def calculate_normalized_power(power_data, interval_seconds=30):
@@ -156,17 +159,17 @@ def calculate_normalized_power(power_data, interval_seconds=30):
     return np_val
 ```
 
-### 2. Puntuación de Estrés de Entrenamiento (Training Stress Score - TSS)
+### 2. Training Stress Score (TSS)
 
-El TSS es una métrica que cuantifica la carga de entrenamiento de una actividad. Tiene en cuenta tanto la duración como la intensidad de la sesión.
+TSS is a metric that quantifies the training load of an activity. It takes into account both duration and intensity of the session.
 
-**Algoritmo:**
-El TSS se calcula utilizando la Potencia Normalizada (NP), el Factor de Intensidad (IF - Intensity Factor) y la duración de la actividad. El IF es simplemente la relación entre la NP y el Umbral de Potencia Funcional (FTP) del atleta.
+**Algorithm:**
+TSS is calculated using Normalized Power (NP), Intensity Factor (IF) and activity duration. IF is simply the ratio between NP and the athlete's Functional Threshold Power (FTP).
 
 -   `IF = NP / FTP`
--   `TSS = (Duración_segundos * NP * IF) / (FTP * 3600) * 100`
+-   `TSS = (Duration_seconds * NP * IF) / (FTP * 3600) * 100`
 
-La fórmula simplificada que se usa en el código es:
+The simplified formula used in the code is:
 
 ```python
 def calculate_tss(activity_duration_seconds, np_watts, ftp_watts):
@@ -175,20 +178,20 @@ def calculate_tss(activity_duration_seconds, np_watts, ftp_watts):
     return tss
 ```
 
-### 3. Métricas de Carga de Entrenamiento (CTL, ATL, TSB)
+### 3. Training Load Metrics (CTL, ATL, TSB)
 
-Estas métricas, popularizadas por TrainingPeaks, ayudan a gestionar la carga de entrenamiento a lo largo del tiempo.
+These metrics, popularized by TrainingPeaks, help manage training load over time.
 
--   **CTL (Chronic Training Load - Carga de Entrenamiento Crónica)**: Representa el "fitness" o estado de forma del atleta. Es una media móvil exponencial de los valores de TSS diarios durante los últimos 42 días. Un CTL en aumento indica una mayor carga de entrenamiento y, por lo tanto, una mejora de la forma física.
+-   **CTL (Chronic Training Load)**: Represents the athlete's "fitness". It is an exponentially weighted moving average of daily TSS values over the last 42 days. A rising CTL indicates increased training load and, therefore, better fitness.
 
--   **ATL (Acute Training Load - Carga de Entrenamiento Aguda)**: Representa la "fatiga" del atleta. Es una media móvil exponencial de los valores de TSS diarios durante los últimos 7 días. Un ATL en aumento indica una acumulación de fatiga.
+-   **ATL (Acute Training Load)**: Represents short-term "fatigue". It is an exponentially weighted moving average of daily TSS values over the last 7 days. A rising ATL indicates accumulated fatigue.
 
--   **TSB (Training Stress Balance - Equilibrio de la Carga de Entrenamiento)**: Representa la "forma" o "frescura" del atleta. Se calcula como la diferencia entre el CTL y el ATL (`TSB = CTL - ATL`).
-    -   Un TSB positivo sugiere que el atleta está descansado y en buena forma para competir.
-    -   Un TSB negativo indica que el atleta está fatigado y puede necesitar descanso.
+-   **TSB (Training Stress Balance)**: Represents the athlete's "form" or "freshness". It is calculated as the difference between CTL and ATL (`TSB = CTL - ATL`).
+    -   A positive TSB suggests the athlete is rested and in good shape to compete.
+    -   A negative TSB indicates the athlete is fatigued and may need rest.
 
-**Algoritmo:**
-Las métricas se calculan iterativamente para cada día, utilizando las constantes de tiempo (TC) de 42 días para el CTL y 7 días para el ATL.
+**Algorithm:**
+These metrics are computed iteratively for each day, using time constants (TC) of 42 days for CTL and 7 days for ATL.
 
 ```python
 def calculate_ctl_atl_tsb(daily_tss):
@@ -201,19 +204,19 @@ def calculate_ctl_atl_tsb(daily_tss):
         current_ctl = current_ctl + (tss - current_ctl) / CTL_TC
         current_atl = current_atl + (tss - current_atl) / ATL_TC
         tsb = current_ctl - current_atl
-        # ... se almacenan los valores para cada día
+        # ... los valores se almacenan para cada día
 ```
 
-### 4. Deriva Cardíaca (Cardiac Drift)
+### 4. Cardiac Drift
 
-La deriva cardíaca mide la disminución de la eficiencia a medida que avanza una actividad, generalmente debido a la fatiga, la deshidratación o el calor. Se manifiesta como un aumento de la frecuencia cardíaca para mantener una misma potencia, o una disminución de la potencia para una misma frecuencia cardíaca.
+Cardiac drift measures the decrease in efficiency as an activity progresses, generally caused by fatigue, dehydration or heat. It manifests as an increase in heart rate to maintain the same power, or a decrease in power for the same heart rate.
 
-**Algoritmo:**
-Se calcula para actividades de más de 90 minutos.
-1.  Se calcula la relación entre la potencia y la frecuencia cardíaca (`Potencia / FC`) para cada punto de datos de la actividad.
-2.  La actividad se divide en dos mitades (por tiempo).
-3.  Se calcula la media de esta relación para la primera mitad y para la segunda mitad.
-4.  La deriva cardíaca es la caída porcentual de esta relación de la primera a la segunda mitad.
+**Algorithm:**
+It is calculated for activities longer than 90 minutes.
+1.  The power-to-heart-rate ratio (`Power / HR`) is computed for each data point of the activity.
+2.  The activity is split into two halves (by time).
+3.  The mean of this ratio is computed for the first and the second half.
+4.  Cardiac drift is the percentage drop of this ratio from the first half to the second half.
 
 ```python
 def calculate_cardiac_drift(df_activity_records, total_elapsed_time):
@@ -227,23 +230,23 @@ def calculate_cardiac_drift(df_activity_records, total_elapsed_time):
     cardiac_drift = ((avg_power_hr_ratio_1st_half - avg_power_hr_ratio_2nd_half) / avg_power_hr_ratio_1st_half) * 100
     return cardiac_drift
 ```
-Un valor bajo (cercano a 0 o negativo) indica una buena eficiencia aeróbica, mientras que un valor alto (típicamente > 5-10%) puede indicar una falta de base aeróbica, fatiga o una mala gestión de la nutrición/hidratación.
+A low value (close to 0 or negative) indicates good aerobic efficiency, while a high value (typically > 5-10%) may indicate a lack of aerobic base, fatigue or poor nutrition/hydration management.
 
-### 5. Cálculo de Zonas de Potencia (Coggan Zones)
+### 5. Power Zones (Coggan Zones)
 
-Las zonas de potencia se calculan como porcentajes fijos del Umbral de Potencia Funcional (FTP) del atleta. Este proyecto utiliza el modelo estándar de 7 zonas propuesto por Andrew Coggan.
+Power zones are calculated as fixed percentages of the athlete's Functional Threshold Power (FTP). This project uses the standard 7-zone model proposed by Andrew Coggan.
 
-| Zona | Nombre | Rango (% del FTP) |
+| Zone | Name | Range (% of FTP) |
 | :--- | :--- | :--- |
-| **Z1** | Recuperación Activa | < 55% |
-| **Z2** | Resistencia (Endurance) | 56% - 75% |
+| **Z1** | Active Recovery | < 55% |
+| **Z2** | Endurance | 56% - 75% |
 | **Z3** | Tempo | 76% - 90% |
-| **Z4** | Umbral Lactato (Threshold) | 91% - 105% |
-| **Z5** | VO2 Máx | 106% - 120% |
-| **Z6** | Capacidad Anaeróbica | 121% - 150% |
-| **Z7** | Potencia Neuromuscular | > 150% |
+| **Z4** | Lactate Threshold | 91% - 105% |
+| **Z5** | VO2 Max | 106% - 120% |
+| **Z6** | Anaerobic Capacity | 121% - 150% |
+| **Z7** | Neuromuscular Power | > 150% |
 
-**Algoritmo:**
+**Algorithm:**
 ```python
 def calculate_power_zones(ftp):
     return {
@@ -257,19 +260,19 @@ def calculate_power_zones(ftp):
     }
 ```
 
-### 6. Cálculo de Zonas de Frecuencia Cardíaca (Friel Zones)
+### 6. Heart Rate Zones (Friel Zones)
 
-Las zonas de frecuencia cardíaca se calculan como porcentajes del Umbral de Frecuencia Cardíaca de Lactato (LTHR) utilizando la metodología de Joe Friel.
+Heart rate zones are calculated as percentages of the athlete's Lactate Threshold Heart Rate (LTHR) using the methodology of Joe Friel.
 
-| Zona | Nombre | Rango (% del LTHR) |
+| Zone | Name | Range (% of LTHR) |
 | :--- | :--- | :--- |
-| **Z1** | Recuperación | < 85% |
-| **Z2** | Resistencia (Base) | 85% - 89% |
+| **Z1** | Recovery | < 85% |
+| **Z2** | Endurance (Base) | 85% - 89% |
 | **Z3** | Tempo | 90% - 94% |
-| **Z4** | Umbral (Threshold) | 95% - 100% |
-| **Z5** | Capacidad Aeróbica (VO2 Máx) | > 100% |
+| **Z4** | Threshold | 95% - 100% |
+| **Z5** | Aerobic Capacity (VO2 Max) | > 100% |
 
-**Algoritmo:**
+**Algorithm:**
 ```python
 def calculate_hr_zones(lthr):
     return {
@@ -281,130 +284,126 @@ def calculate_hr_zones(lthr):
     }
 ```
 
-### 7. Detección Automática de Mejoras de Umbral
+### 7. Automatic Threshold Improvement Detection
 
-El sistema analiza cada actividad en busca de rendimientos que sugieran una mejora en los umbrales configurados del atleta (FTP, LTHR y Ritmo Umbral).
+The system analyzes each activity looking for performances that suggest an improvement over the athlete's configured thresholds (FTP, LTHR and Threshold Pace).
 
-**Algoritmo de Detección:**
-1.  **FTP (Ciclismo):** Se busca el bloque de 20 minutos de mayor potencia media.
-    *   `Sugerencia = Mejor Potencia 20 min * 0.95`
-2.  **LTHR (Frecuencia Cardíaca):** Se busca el bloque de 20 minutos de mayor frecuencia cardíaca media.
-    *   `Sugerencia = Mejor Pulso Medio 20 min`
-3.  **Ritmo Umbral (Carrera):** Se busca el bloque de 20 minutos de mayor velocidad media.
-    *   `Sugerencia = Mejor Velocidad 20 min`
+**Detection Algorithm:**
+1.  **FTP (Cycling):** It looks for the 20-minute block with the highest average power.
+    *   `Suggestion = Best 20 min Power * 0.95`
+2.  **LTHR (Heart Rate):** It looks for the 20-minute block with the highest average heart rate.
+    *   `Suggestion = Best 20 min Average HR`
+3.  **Threshold Pace (Running):** It looks for the 20-minute block with the highest average speed.
+    *   `Suggestion = Best 20 min Average Speed`
 
-**Implementación Técnica:**
-El sistema utiliza una ventana deslizante (`rolling window`) de 1200 segundos (20 minutos) sobre los registros de la actividad:
+**Implementation:**
+The system uses a rolling window of 1200 seconds (20 minutes) over the activity records:
 ```python
 def calculate_best_intervals(series, window_seconds):
     return series.rolling(window=window_seconds).mean().max()
 ```
-Si el valor calculado (tras aplicar el factor de corrección del 0.95 en el caso del FTP) es superior al valor actual en las preferencias del usuario, se dispara una notificación en la interfaz.
+If the computed value (after applying the 0.95 correction factor in the case of FTP) is higher than the current value in the user's preferences, a notification is triggered in the interface.
 
-### 8. Distribución de Zonas (Frecuencia Cardíaca y Potencia)
+### 8. Zone Distribution (Heart Rate and Power)
 
-El análisis de tiempo en zonas permite evaluar si el entrenamiento se alinea con los objetivos (ej. entrenamiento de base en Z2, series de intensidad en Z4/Z5).
+Time-in-zone analysis allows evaluating whether training aligns with the objectives (e.g., base training in Z2, high-intensity intervals in Z4/Z5).
 
-**Algoritmo:**
-1.  Se definen las zonas de Frecuencia Cardíaca y Potencia del usuario con sus límites superiores.
-2.  Para cada punto de datos de la actividad (registrado cada segundo), se clasifica en una zona comparando el valor de FC o potencia con los límites definidos.
-3.  Se suma el tiempo total (en segundos/minutos) pasado en cada zona a lo largo de todo el período de análisis.
+**Algorithm:**
+1.  The user's Heart Rate and Power zones are defined with their upper limits.
+2.  For each data point of the activity (recorded every second), it is classified into a zone by comparing the HR or power value with the defined limits.
+3.  The total time (in seconds/minutes) spent in each zone is summed over the whole analysis period.
 
-### 9. Curva de Potencia (Mean Maximal Power - MMP)
+### 9. Power Curve (Mean Maximal Power - MMP)
 
-La curva MMP representa los mejores valores de potencia media que el atleta ha sido capaz de sostener para diferentes duraciones (desde 1 segundo hasta varias horas).
+The MMP curve represents the best average power values the athlete has been able to sustain for different durations (from 1 second to several hours).
 
-**Algoritmo:**
-1.  Se definen duraciones clave (1s, 5s, 1m, 5m, 20m, 60m, etc.).
-2.  Para cada actividad, se calcula el máximo de la media móvil (`rolling mean`) para cada duración.
-3.  Se mantiene un registro histórico de estos máximos en la base de datos (`mmp_data`).
-4.  La visualización compara la curva del periodo actual con los récords históricos (All-time).
+**Algorithm:**
+1.  Key durations are defined (1s, 5s, 1m, 5m, 20m, 60m, etc.).
+2.  For each activity, the maximum of the rolling mean is computed for each duration.
+3.  A historical record of these maxima is kept in the database (`mmp_data`).
+4.  The visualization compares the current period curve with the historical records (All-time).
 
-### 10. Eficiencia Aeróbica (Efficiency Factor - EF)
+### 10. Aerobic Efficiency (Efficiency Factor - EF)
 
-El EF mide la relación entre el trabajo realizado (Potencia Normalizada) y el coste fisiológico (Frecuencia Cardíaca Media). Es la métrica clave para monitorizar el desarrollo de la base aeróbica.
+EF measures the relationship between the work done (Normalized Power) and the physiological cost (Average Heart Rate). It is the key metric to monitor the development of the aerobic base.
 
-**Algoritmo:**
--   `EF = Potencia Normalizada (NP) / Frecuencia Cardíaca Media`
--   Para que el análisis sea válido, se filtran actividades de ciclismo de más de 60 minutos con datos estables de pulso y potencia.
--   Un EF al alza indica que el atleta está produciendo más potencia por cada latido del corazón (mejor economía).
+**Algorithm:**
+-   `EF = Normalized Power (NP) / Average Heart Rate`
+-   For the analysis to be valid, cycling activities longer than 60 minutes with stable power and HR data are filtered.
+-   A rising EF indicates that the athlete is producing more power per heartbeat (better economy).
 
-### 11. Índice de Variabilidad (Variability Index - VI)
+### 11. Variability Index (VI)
 
-El VI indica cómo de constante o "estocástico" ha sido el esfuerzo de una actividad.
+VI indicates how constant or "stochastic" the effort of an activity has been.
 
-**Algoritmo:**
--   `VI = Potencia Normalizada (NP) / Potencia Media`
--   Un valor cercano a 1.0 (ej. 1.02-1.05) indica un esfuerzo muy constante (como una contrarreloj o rodillo).
--   Valores altos (> 1.15) indican esfuerzos con muchos cambios de ritmo (series, carreras con ataques, terreno muy quebrado).
+**Algorithm:**
+-   `VI = Normalized Power (NP) / Average Power`
+-   A value close to 1.0 (e.g. 1.02-1.05) indicates a very constant effort (like a time trial or a trainer ride).
+-   High values (> 1.15) indicate efforts with many pace changes (intervals, races with attacks, very broken terrain).
 
-### 12. Capacidad Anaeróbica (W-Prime - W')
+### 12. Anaerobic Capacity (W-Prime - W')
 
-W' representa la cantidad de energía (en Julios) que un atleta puede gastar por encima de su FTP antes de llegar al agotamiento total. Se visualiza como una "batería anaeróbica".
+W' represents the amount of energy (in Joules) an athlete can expend above their FTP before reaching exhaustion. It is visualized as an "anaerobic battery".
 
-**Algoritmo:**
--   **Estimación:** Se calcula analizando la curva de potencia histórica (MMP), comparando los récords de corta duración (1-5 min) con el FTP actual.
--   **Balance (W-bal):** Utiliza el **modelo de Skiba (2012)** para calcular el estado de la batería segundo a segundo:
-    -   **Gasto:** Cuando la potencia > FTP, la batería se agota linealmente.
-    -   **Recuperación:** Cuando la potencia < FTP, la batería se recarga de forma exponencial (la recarga es más lenta cuanto más cerca del FTP se esté).
--   **Interpretación:** Una batería al 0% indica agotamiento fisiológico inminente. Es útil para analizar ataques en carrera o la capacidad de repetir esfuerzos en series de alta intensidad.
+**Algorithm:**
+-   **Estimation:** It is calculated by analyzing the historical power curve (MMP), comparing short-duration records (1-5 min) with the current FTP.
+-   **Balance (W-bal):** It uses the **Skiba model (2012)** to compute the state of the battery second by second:
+    -   **Expenditure:** When power > FTP, the battery depletes linearly.
+    -   **Recovery:** When power < FTP, the battery recharges exponentially (the recharge is slower the closer to FTP).
+-   **Interpretation:** A battery at 0% indicates imminent physiological exhaustion. It is useful for analyzing race attacks or the ability to repeat high-intensity efforts in interval sessions.
 
-### 13. Volumen de Entrenamiento
+### 13. Training Volume
 
-Se calcula el volumen total de entrenamiento agregando las siguientes métricas por semana y por mes:
--   **Distancia total** (en km)
--   **Tiempo total** (en horas)
--   **Desnivel positivo total** (en metros)
+Total training volume is calculated aggregating the following metrics per week and per month:
+-   **Total distance** (in km)
+-   **Total time** (in hours)
+-   **Total positive elevation gain** (in meters)
 
-## Visualización de Gráficos
+## Chart Visualizations
 
-Los cálculos anteriores se visualizan mediante los siguientes gráficos generados con **Chart.js** para interactividad:
+The calculations above are visualized with the following charts generated with **Chart.js** for interactivity:
 
--   **TSS Semanal**: Gráfico de barras.
--   **Tendencias de Carga (CTL, ATL, TSB)**: Gráfico de líneas.
--   **Distribución de Zonas de FC y Potencia**: Gráficos de tarta.
--   **Volumen Semanal y Mensual**: Gráficos de barras que muestran la distancia y ofrecen detalles del tiempo y desnivel al pasar el ratón por encima.
--   **Curva de Potencia (MMP)**: Gráfico de líneas en escala logarítmica comparando el periodo actual con los récords históricos.
--   **Evolución de Eficiencia (EF)**: Gráfico de dispersión con línea de tendencia que muestra la mejora de la economía aeróbica.
--   **Gráfico de Rendimiento de Actividad**: Series temporales de potencia, pulso y cadencia sobre el eje de distancia (km), incluyendo la línea de **Balance de W'** (batería anaeróbica).
+-   **Weekly TSS**: Bar chart.
+-   **Load Trends (CTL, ATL, TSB)**: Line chart.
+-   **HR and Power Zone Distribution**: Pie charts.
+-   **Weekly and Monthly Volume**: Bar charts showing distance with time and elevation details on hover.
+-   **Power Curve (MMP)**: Line chart on a logarithmic scale comparing the current period with the historical records.
+-   **Efficiency Evolution (EF)**: Scatter chart with trend line showing the improvement of the aerobic economy.
+-   **Activity Performance Chart**: Time series of power, HR and cadence along the distance axis (km), including the **W' Balance** line (anaerobic battery).
 
-## Glosario de Términos
+## Glossary
 
-A continuación se definen los términos y siglas clave utilizados en la plataforma:
+*   **FTP (Functional Threshold Power):** The maximum average power a cyclist can theoretically sustain for one hour of constant effort. It is the reference value for calculating power zones.
+*   **LTHR (Lactate Threshold Heart Rate):** The average heart rate sustained during a maximal effort of about 20-30 minutes. It defines the boundary between aerobic and anaerobic metabolism.
+*   **NP (Normalized Power):** An estimate of the power that could have been sustained if the effort had been constant, compensating for changes in pace and terrain through a mathematical algorithm.
+*   **IF (Intensity Factor):** The relationship between Normalized Power and FTP (`IF = NP / FTP`). It indicates how hard a session has been relative to current capacity.
+*   **TSS (Training Stress Score):** A metric that quantifies the total load of a session combining intensity (IF) and duration.
+*   **CTL (Chronic Training Load):** Chronic Training Load. Represents "Fitness" or physical condition. It is an average of the load accumulated over the last 42 days.
+*   **ATL (Acute Training Load):** Short-term "Fatigue". It is an average of the load over the last 7 days.
+*   **TSB (Training Stress Balance):** "Form" or "Freshness". It is calculated as `CTL - ATL`. A positive value indicates rest; a very negative one indicates deep fatigue.
+*   **EF (Efficiency Factor):** Ratio between NP and Average HR. It measures the aerobic economy.
+*   **VI (Variability Index):** Ratio between NP and Average Power. It measures the irregularity of the effort.
+*   **W' (W-Prime):** Anaerobic capacity. The amount of energy available for efforts above the FTP (measured in Joules).
+*   **VAM (Average Ascent Velocity):** Vertical meters climbed per hour.
+*   **Cardiac Drift:** The rise in heart rate over time while maintaining constant power, indicative of cardiovascular fatigue or dehydration.
+*   **MMP (Mean Maximal Power):** The maximum power value you have been able to sustain for a given duration (e.g.: MMP 20 min).
 
-*   **FTP (Functional Threshold Power):** Potencia Umbral Funcional. Es la máxima potencia media que un ciclista puede mantener, en teoría, durante una hora de esfuerzo constante. Es el valor de referencia para calcular las zonas de potencia.
-*   **LTHR (Lactate Threshold Heart Rate):** Frecuencia Cardíaca en el Umbral de Lactato. Es el pulso medio mantenido durante un esfuerzo máximo de unos 20-30 minutos. Define el límite entre el metabolismo aeróbico y anaeróbico.
-*   **NP (Normalized Power):** Potencia Normalizada. Una estimación de la potencia que se podría haber mantenido si el esfuerzo hubiera sido constante, compensando los cambios de ritmo y terreno mediante un algoritmo matemático.
-*   **IF (Intensity Factor):** Factor de Intensidad. Es la relación entre la Potencia Normalizada y el FTP (`IF = NP / FTP`). Indica cómo de dura ha sido una sesión respecto a la capacidad actual del atleta.
-*   **TSS (Training Stress Score):** Puntuación de Estrés de Entrenamiento. Una métrica que cuantifica la carga total de una sesión combinando intensidad (IF) y duración.
-*   **CTL (Chronic Training Load):** Carga de Entrenamiento Crónica. Representa la "Condición Física" o *Fitness*. Es una media de la carga acumulada en los últimos 42 días.
-*   **ATL (Acute Training Load):** Carga de Entrenamiento Aguda. Representa la "Fatiga" a corto plazo. Es una media de la carga de los últimos 7 días.
-*   **TSB (Training Stress Balance):** Equilibrio de la Carga. Representa la "Forma" o "Frescura". Se calcula como `CTL - ATL`. Un valor positivo indica descanso; uno muy negativo indica fatiga profunda.
-*   **EF (Efficiency Factor):** Factor de Eficiencia. Ratio entre la NP y el Pulso Medio. Mide la economía aeróbica.
-*   **VI (Variability Index):** Índice de Variabilidad. Ratio entre NP y Potencia Media. Mide la irregularidad del esfuerzo.
-*   **W' (W-Prime):** Capacidad Anaeróbica. Cantidad de energía disponible para esfuerzos por encima del FTP (medida en Julios).
-*   **VAM (Velocidad de Ascensión Media):** Metros verticales subidos por hora.
-*   **Cardiac Drift:** Deriva Cardíaca. El aumento del pulso a lo largo del tiempo manteniendo una potencia constante, indicativo de fatiga cardiovascular o deshidratación.
-*   **MMP (Mean Maximal Power):** Potencia Media Máxima. El valor máximo de potencia que has sido capaz de sostener para una duración determinada (ej: MMP 20 min).
+## References
 
-## Referencias Bibliográficas
-
-Los algoritmos y métricas utilizados en este proyecto se basan en conceptos bien establecidos en la ciencia del deporte y el entrenamiento de resistencia. Las principales referencias son:
+The algorithms and metrics used in this project are based on well-established concepts in sports science and endurance training. The main references are:
 
 -   **Allen, H., & Coggan, A. (2010). *Training and Racing with a Power Meter*. VeloPress.**
-    -   Este libro es la referencia fundamental para el entrenamiento basado en potencia. Explica en detalle los conceptos de Potencia Normalizada (NP), Factor de Intensidad (IF) y Puntuación de Estrés de Entrenamiento (TSS). El Dr. Andrew Coggan es el creador de estas métricas.
+    -   This book is the fundamental reference for power-based training. It explains in detail the concepts of Normalized Power (NP), Intensity Factor (IF) and Training Stress Score (TSS). Dr. Andrew Coggan is the creator of these metrics.
 
 -   **Friel, J. (2016). *The Cyclist's Training Bible*. VeloPress.**
-    -   Joe Friel es un reconocido entrenador que ha popularizado muchos de los conceptos de planificación y periodización del entrenamiento. Su libro explica cómo utilizar las métricas de carga (CTL, ATL, TSB) para guiar el entrenamiento y alcanzar el pico de forma en el momento adecuado.
+    -   Joe Friel is a renowned coach who has popularized many of the training planning and periodization concepts. His book explains how to use load metrics (CTL, ATL, TSB) to guide training and peak at the right moment.
 
 -   **Skiba, P. (2012). *Scientific Training for Endurance Athletes*.**
-    -   Este libro profundiza en los modelos matemáticos del rendimiento humano, incluyendo el modelo de impulso-respuesta en el que se basan las métricas de CTL, ATL y TSB (originalmente propuesto por el Dr. E. W. Banister).
+    -   This book delves into the mathematical models of human performance, including the impulse-response model on which the CTL, ATL and TSB metrics are based (originally proposed by Dr. E. W. Banister).
 
 -   **Coyle, E. F. (1995). "Cardiovascular drift during prolonged exercise and the effects of dehydration." *International Journal of Sports Medicine*.**
-    -   Este y otros trabajos del Dr. Coyle son fundamentales para entender el concepto de deriva cardíaca y su relación con la deshidratación, el aumento de la temperatura corporal y la eficiencia cardiovascular durante el ejercicio prolongado.
+    -   This and other works by Dr. Coyle are fundamental for understanding the concept of cardiac drift and its relationship with dehydration, core temperature rise and cardiovascular efficiency during prolonged exercise.
 
----
+## License
 
-## Licencia
-
-© 2026 Pablo Sanxiao. Licenciado bajo [GNU AGPL-3.0](LICENSE).
+© 2026 Pablo Sanxiao. Licensed under the [GNU AGPL-3.0](LICENSE).
