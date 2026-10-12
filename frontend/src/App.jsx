@@ -15,7 +15,7 @@ const Atleta = lazy(() => import('./pages/Atleta'));
 const ActivityDetail = lazy(() => import('./pages/ActivityDetail'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Coach = lazy(() => import('./pages/Coach'));
-const Settings = lazy(() => import('./pages/Settings'));
+const Cuenta = lazy(() => import('./pages/Cuenta'));
 const Help = lazy(() => import('./pages/Help'));
 
 const PageLoader = () => (
@@ -43,7 +43,8 @@ function App() {
                 <Route path="/activity/:id" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><ActivityDetail /></Suspense></ErrorBoundary>} />
                 <Route path="/analytics" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Analytics /></Suspense></ErrorBoundary>} />
                 <Route path="/coach" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Coach /></Suspense></ErrorBoundary>} />
-                <Route path="/settings" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Settings /></Suspense></ErrorBoundary>} />
+                <Route path="/cuenta" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Cuenta /></Suspense></ErrorBoundary>} />
+                <Route path="/settings" element={<Navigate to="/cuenta" replace />} />
                 <Route path="/help" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Help /></Suspense></ErrorBoundary>} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
               </Route>

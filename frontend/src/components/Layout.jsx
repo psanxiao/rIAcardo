@@ -8,11 +8,11 @@ import {
   Activity, 
   Calendar as CalendarIcon,
   Bot,
-  Settings as SettingsIcon, 
   Menu, 
   X, 
   LogOut,
   User,
+  Dumbbell,
   HelpCircle,
   Moon,
   Sun
@@ -25,7 +25,7 @@ const Layout = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const displayName = user?.full_name || user?.email || 'Perfil Atleta';
+  const displayName = user?.full_name || user?.email || 'Mi cuenta';
 
   const handleLogout = () => {
     logout();
@@ -37,7 +37,7 @@ const Layout = () => {
     { name: 'Calendario', path: '/calendar', icon: CalendarIcon },
     { name: 'Analytics', path: '/analytics', icon: Activity },
     { name: 'Coach IA', path: '/coach', icon: Bot },
-    { name: 'Ajustes', path: '/settings', icon: SettingsIcon },
+    { name: 'Atleta', path: '/atleta', icon: Dumbbell },
   ];
 
   return (
@@ -96,10 +96,10 @@ const Layout = () => {
         
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-1">
           <Link 
-            to="/atleta"
+            to="/cuenta"
             onClick={() => setSidebarOpen(false)}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              location.pathname === '/atleta'
+              location.pathname === '/cuenta'
                 ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' 
                 : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
             }`}

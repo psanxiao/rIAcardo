@@ -1,411 +1,405 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import api from '../services/api';
-import { Spinner, ErrorState } from '../components/ui';
-import { User, Mail, Lock, Link as LinkIcon, CheckCircle2, XCircle, AlertCircle, Save, ShieldCheck, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
+import { Spinner } from '../components/ui';
+import ZoneEditor from '../components/settings/ZoneEditor';
+import { Save, AlertCircle, User, Target, Brain } from 'lucide-react';
 
 const Atleta = () => {
-  const { user, refreshProfile, isLoading: authLoading } = useAuth();
-  const [profile, setProfile] = useState({
-    email: '',
-    full_name: '',
-    garmin_connected: false,
-    garmin_email: null,
-    google_calendar_id: ''
+  const [settings, setSettings] = useState({
+    ftp: '',
+    lthr: '',
+    weight: '',
+    age: '',
+    threshold_pace: '',
+    athlete_context: '',
+    athlete_goal: '',
   });
-  const [garminStatus, setGarminStatus] = useState({ connected: false, sync_status: 'IDLE' });
-  const [garminForm, setGarminForm] = useState({ email: '', password: '' });
-  const [connecting, setConnecting] = useState(false);
-  const [passwords, setPasswords] = useState({
-    current: '',
-    new: '',
-    confirm: ''
-  });
+  const [powerZones, setPowerZones] = useState([]);
+  const [hrZones, setHrZones] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [savingCalendar, setSavingCalendar] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [racePredictions, setRacePredictions] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  useEffect(() => {
-    if (user) {
-      setProfile({
-        ...user,
-        google_calendar_id: user.google_calendar_id || ''
-      });
-      setLoading(false);
-    } else if (!authLoading) {
-      setLoading(false);
+  // Helpers to convert between m/s and min/km
+  const msToPace = (ms) => {
+    if (!ms || isNaN(ms) || parseFloat(ms) === 0) return "";
+    const totalSeconds = 1000 / parseFloat(ms);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const paceToMs = (paceStr) => {
+    if (!paceStr || typeof paceStr !== 'string') return 0;
+    const parts = paceStr.split(':');
+    if (parts.length === 2) {
+      const mins = parseInt(parts[0]);
+      const secs = parseInt(parts[1]);
+      if (isNaN(mins) || isNaN(secs) || (mins === 0 && secs === 0)) return 0;
+      return 1000 / (mins * 60 + secs);
     }
-  }, [user, authLoading]);
+    const val = parseFloat(paceStr);
+    if (isNaN(val) || val === 0) return 0;
+    return 1000 / (val * 60);
+  };
+
+  const defaultPowerZones = useMemo(() => [
+    { name: 'Z1', label: 'Recuperación Activa', min: 0, max: 0 },
+    { name: 'Z2', label: 'Resistencia', min: 0, max: 0 },
+    { name: 'Z3', label: 'Tempo', min: 0, max: 0 },
+    { name: 'Z4', label: 'Umbral Lactato', min: 0, max: 0 },
+    { name: 'Z5', label: 'VO2 Máx', min: 0, max: 0 },
+    { name: 'Z6', label: 'Capacidad Anaeróbica', min: 0, max: 0 },
+    { name: 'Z7', label: 'Neuromuscular', min: 0, max: 9999 },
+  ], []);
+
+  const defaultHrZones = useMemo(() => [
+    { name: 'Z1', label: 'Recuperación Activa', min: 0, max: 0 },
+    { name: 'Z2', label: 'Aeróbico', min: 0, max: 0 },
+    { name: 'Z3', label: 'Tempo', min: 0, max: 0 },
+    { name: 'Z4', label: 'Sub-Umbral', min: 0, max: 0 },
+    { name: 'Z5', label: 'Umbral / Anaeróbico', min: 0, max: 250 },
+  ], []);
 
   useEffect(() => {
-    const fetchGarminStatus = async () => {
-      try {
-        const res = await api.get('/api/garmin/status');
-        setGarminStatus(res.data);
-      } catch (err) {
-        console.error('Error fetching Garmin status:', err);
-      }
-    };
-    fetchGarminStatus();
+    api.get('/api/analysis/race-predictions').then(r => setRacePredictions(r.data)).catch(() => {});
   }, []);
 
-  const handleProfileSubmit = async (e) => {
-    e.preventDefault();
-    setSavingProfile(true);
-    setMessage({ type: '', text: '' });
-    try {
-      await api.patch('/api/auth/profile', { 
-        full_name: profile.full_name
-      });
-      await refreshProfile();
-      setMessage({ type: 'success', text: 'Nombre actualizado correctamente.' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Error al actualizar el perfil.' });
-    } finally {
-      setSavingProfile(false);
-    }
-  };
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/api/settings');
+        setSettings({
+          ftp: res.data.ftp || '',
+          lthr: res.data.lthr || '',
+          weight: res.data.weight || '',
+          age: res.data.age || '',
+          threshold_pace: msToPace(res.data.threshold_pace),
+          athlete_context: res.data.athlete_context || '',
+          athlete_goal: res.data.athlete_goal || '',
+        });
+        
+        if (res.data.power_zones) {
+          setPowerZones(typeof res.data.power_zones === 'string' ? JSON.parse(res.data.power_zones) : res.data.power_zones);
+        } else {
+          setPowerZones(defaultPowerZones);
+        }
 
-  const handleCalendarSubmit = async (e) => {
-    e.preventDefault();
-    setSavingCalendar(true);
-    setMessage({ type: '', text: '' });
-    try {
-      await api.patch('/api/auth/profile', { 
-        google_calendar_id: profile.google_calendar_id 
-      });
-      await refreshProfile();
-      setMessage({ type: 'success', text: 'ID de Calendario guardado correctamente.' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Error al actualizar las conexiones.' });
-    } finally {
-      setSavingCalendar(false);
-    }
-  };
+        if (res.data.hr_zones) {
+          setHrZones(typeof res.data.hr_zones === 'string' ? JSON.parse(res.data.hr_zones) : res.data.hr_zones);
+        } else {
+          setHrZones(defaultHrZones);
+        }
 
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (passwords.new !== passwords.confirm) {
-      setMessage({ type: 'error', text: 'Las nuevas contraseñas no coinciden.' });
+      } catch (err) {
+        console.error('Error al cargar los datos del atleta', err);
+        setMessage({ type: 'error', text: 'Error al cargar los datos del atleta.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSettings();
+  }, [defaultPowerZones, defaultHrZones]);
+
+  const calculatePowerZones = () => {
+    const ftp = parseInt(settings.ftp);
+    if (!ftp || isNaN(ftp)) {
+      toast.error("Por favor, introduce un FTP válido primero.");
       return;
     }
-    setChangingPassword(true);
-    setMessage({ type: '', text: '' });
-    try {
-      await api.post('/api/auth/change-password', {
-        current_password: passwords.current,
-        new_password: passwords.new
-      });
-      setMessage({ type: 'success', text: 'Contraseña actualizada correctamente.' });
-      setPasswords({ current: '', new: '', confirm: '' });
-    } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Error al cambiar la contraseña.' });
-    } finally {
-      setChangingPassword(false);
+    const newZones = [
+      { name: 'Z1', label: 'Recuperación Activa', min: 0, max: Math.round(ftp * 0.55) },
+      { name: 'Z2', label: 'Resistencia', min: Math.round(ftp * 0.56), max: Math.round(ftp * 0.75) },
+      { name: 'Z3', label: 'Tempo', min: Math.round(ftp * 0.76), max: Math.round(ftp * 0.90) },
+      { name: 'Z4', label: 'Umbral Lactato', min: Math.round(ftp * 0.91), max: Math.round(ftp * 1.05) },
+      { name: 'Z5', label: 'VO2 Máx', min: Math.round(ftp * 1.06), max: Math.round(ftp * 1.20) },
+      { name: 'Z6', label: 'Capacidad Anaeróbica', min: Math.round(ftp * 1.21), max: Math.round(ftp * 1.50) },
+      { name: 'Z7', label: 'Neuromuscular', min: Math.round(ftp * 1.51), max: 9999 },
+    ];
+    setPowerZones(newZones);
+  };
+
+  const calculateHrZones = () => {
+    const lthr = parseInt(settings.lthr);
+    if (!lthr || isNaN(lthr)) {
+      toast.error("Por favor, introduce un Umbral Cardíaco (LTHR) válido primero.");
+      return;
+    }
+    const newZones = [
+      { name: 'Z1', label: 'Recuperación Activa', min: 0, max: Math.round(lthr * 0.81) },
+      { name: 'Z2', label: 'Aeróbico', min: Math.round(lthr * 0.82), max: Math.round(lthr * 0.89) },
+      { name: 'Z3', label: 'Tempo', min: Math.round(lthr * 0.90), max: Math.round(lthr * 0.93) },
+      { name: 'Z4', label: 'Sub-Umbral', min: Math.round(lthr * 0.94), max: Math.round(lthr * 0.99) },
+      { name: 'Z5', label: 'Umbral / Anaeróbico', min: Math.round(lthr * 1.00), max: 250 },
+    ];
+    setHrZones(newZones);
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setSettings(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleZoneChange = (type, index, field, value) => {
+    const val = value === '' ? 0 : parseInt(value);
+    if (type === 'power') {
+      const updated = [...powerZones];
+      updated[index][field] = val;
+      setPowerZones(updated);
+    } else {
+      const updated = [...hrZones];
+      updated[index][field] = val;
+      setHrZones(updated);
     }
   };
 
-  const handleGarminConnect = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setConnecting(true);
+    setSaving(true);
     setMessage({ type: '', text: '' });
     try {
-      await api.post('/api/garmin/connect', { 
-        email: garminForm.email, 
-        password: garminForm.password 
-      });
-      setMessage({ type: 'success', text: 'Garmin Connect conectado correctamente.' });
-      setGarminForm({ email: '', password: '' });
-      const res = await api.get('/api/garmin/status');
-      setGarminStatus(res.data);
-      await refreshProfile();
+      const payload = {
+        ...settings,
+        threshold_pace: paceToMs(settings.threshold_pace),
+        power_zones: JSON.stringify(powerZones),
+        hr_zones: JSON.stringify(hrZones)
+      };
+      await api.post('/api/settings', payload);
+      setMessage({ type: 'success', text: 'Datos del atleta guardados correctamente.' });
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error al conectar con Garmin: ' + (err.response?.data?.detail || err.message) });
+      console.error('Error al guardar los datos del atleta', err);
+      setMessage({ type: 'error', text: 'Error al guardar los datos del atleta.' });
     } finally {
-      setConnecting(false);
+      setSaving(false);
     }
   };
 
-  const handleGarminDisconnect = async () => {
-    if (!confirm('¿Estás seguro de desconectar Garmin?')) return;
-    try {
-      await api.post('/api/garmin/disconnect');
-      setMessage({ type: 'success', text: 'Garmin desconectado correctamente.' });
-      const res = await api.get('/api/garmin/status');
-      setGarminStatus(res.data);
-      await refreshProfile();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Error al desconectar Garmin.' });
-    }
-  };
-
-  if (loading || authLoading) {
+  if (loading) {
     return <Spinner className="h-64" />;
-  }
-
-  if (!user) {
-    return (
-      <div className="max-w-md mx-auto mt-12 p-4">
-        <ErrorState
-          message="No se pudo cargar la información del perfil del atleta."
-          onRetry={refreshProfile}
-        />
-      </div>
-    );
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Perfil del Atleta</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Gestiona tu identidad, seguridad y conexiones externas desde un solo lugar.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Atleta</h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          Tu perfil físico, parámetros de rendimiento, zonas y configuración del coach IA.
+        </p>
       </div>
 
       {message.text && (
-        <div className={`p-4 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 ${
+        <div className={`p-4 rounded-lg flex items-start gap-3 ${
           message.type === 'error' 
-            ? 'bg-red-50 text-red-700 border border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800' 
-            : 'bg-green-50 text-green-700 border border-green-100 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800'
+            ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
+            : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
         }`}>
-          {message.type === 'error' ? <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" /> : <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />}
+          {message.type === 'error' && <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />}
           <p className="text-sm font-medium">{message.text}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <form onSubmit={handleSubmit} className="space-y-8">
         
-        {/* Lado Izquierdo: Identidad y Conexiones */}
-        <div className="space-y-8">
-          {/* Tarjeta de Identidad */}
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
-                <User className="h-5 w-5" />
-              </div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Datos Personales</h2>
-            </div>
-            <form onSubmit={handleProfileSubmit} className="p-6 space-y-5">
+        {/* Bloque 1: Información del Atleta (Física y Rendimiento) */}
+        <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-2">
+            <User className="h-5 w-5 text-indigo-500" />
+            <h2 className="font-semibold text-gray-900 dark:text-white">Perfil y Rendimiento</h2>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Email (Usuario)</label>
-                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
-                  <Mail className="h-4 w-4" />
-                  <span className="text-sm truncate">{profile.email}</span>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="full_name" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nombre Completo</label>
+                <label htmlFor="age" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Edad</label>
                 <input
-                  type="text"
-                  id="full_name"
-                  value={profile.full_name || ''}
-                  onChange={(e) => setProfile({...profile, full_name: e.target.value})}
-                  className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                  placeholder="Introduce tu nombre"
+                  type="number"
+                  name="age"
+                  id="age"
+                  value={settings.age}
+                  onChange={handleChange}
+                  className="mt-1 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white py-2 px-3 border"
+                  placeholder="30"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
-              >
-                <Save className="h-4 w-4" />
-                {savingProfile ? 'Guardando...' : 'Guardar Cambios'}
-              </button>
-            </form>
-          </section>
-
-          {/* Tarjeta de Conexiones */}
-          <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
-                <LinkIcon className="h-5 w-5" />
+              <div>
+                <label htmlFor="weight" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Peso (kg)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="weight"
+                  id="weight"
+                  value={settings.weight}
+                  onChange={handleChange}
+                  className="mt-1 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white py-2 px-3 border"
+                  placeholder="70.5"
+                />
               </div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Conexiones Externas</h2>
-            </div>
-            <form onSubmit={handleCalendarSubmit} className="p-6 space-y-6">
-              {/* Garmin Connect */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-[#007cc3]/10 p-2.5 rounded-xl">
-                      <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#007cc3] fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                    </div>
-                    <div>
-                      <p className="font-bold text-base text-gray-900 dark:text-white">Garmin Connect</p>
-                      <p className="text-xs text-gray-500 font-medium">
-                        {garminStatus.connected ? `Conectado` : 'Cuenta no vinculada'}
-                      </p>
-                    </div>
-                  </div>
-                  {garminStatus.connected ? (
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-black uppercase rounded-full border border-green-200 dark:border-green-800">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Activo
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] font-black uppercase rounded-full border border-gray-200 dark:border-gray-600">
-                      <XCircle className="h-3.5 w-3.5" />
-                      Inactivo
-                    </span>
-                  )}
-                </div>
-                
-                {!garminStatus.connected ? (
-                  <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xs text-gray-500">Introduce tus credenciales de Garmin Connect:</p>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 ml-1">Email</label>
-                      <input
-                        type="email"
-                        value={garminForm.email}
-                        onChange={(e) => setGarminForm({...garminForm, email: e.target.value})}
-                        className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 outline-none"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 ml-1">Contraseña</label>
-                      <input
-                        type="password"
-                        value={garminForm.password}
-                        onChange={(e) => setGarminForm({...garminForm, password: e.target.value})}
-                        className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 outline-none"
-                        required
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleGarminConnect}
-                      disabled={connecting}
-                      className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-[#007cc3] hover:bg-[#006aa8] focus:outline-none transition-colors disabled:opacity-50"
-                    >
-                      {connecting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
-                      {connecting ? 'Conectando...' : 'Conectar Garmin'}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleGarminDisconnect}
-                    className="w-full flex justify-center items-center gap-2 py-2 px-4 border border-red-200 dark:border-red-800 shadow-sm text-xs font-bold rounded-xl text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 transition-colors"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Desconectar Garmin
-                  </button>
-                )}
+              <div>
+                <label htmlFor="ftp" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">FTP (W)</label>
+                <input
+                  type="number"
+                  name="ftp"
+                  id="ftp"
+                  value={settings.ftp}
+                  onChange={handleChange}
+                  className="mt-1 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white py-2 px-3 border"
+                  placeholder="250"
+                />
               </div>
-
-              {/* Google Calendar ID */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
-                    <CalendarIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <label htmlFor="google_calendar_id" className="text-sm font-bold text-gray-700 dark:text-gray-300">Google Calendar ID</label>
-                </div>
+              <div>
+                <label htmlFor="lthr" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Umbral HR (bpm)</label>
+                <input
+                  type="number"
+                  name="lthr"
+                  id="lthr"
+                  value={settings.lthr}
+                  onChange={handleChange}
+                  className="mt-1 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white py-2 px-3 border"
+                  placeholder="165"
+                />
+              </div>
+              <div>
+                <label htmlFor="threshold_pace" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Ritmo Umbral (min/km)</label>
                 <input
                   type="text"
-                  id="google_calendar_id"
-                  value={profile.google_calendar_id || ''}
-                  onChange={(e) => setProfile({...profile, google_calendar_id: e.target.value})}
-                  className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="ej: c_12345...6789@group.calendar.google.com"
+                  name="threshold_pace"
+                  id="threshold_pace"
+                  value={settings.threshold_pace}
+                  onChange={handleChange}
+                  className="mt-1 block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white py-2 px-3 border"
+                  placeholder="4:30"
                 />
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800/50">
-                  <p className="text-[10px] text-blue-800 dark:text-blue-400 leading-tight">
-                    Para que la IA pueda escribir en tu calendario, debes <strong>compartirlo</strong> con permisos de edición con este email:
-                  </p>
-                  <p className="text-[11px] font-mono font-bold text-blue-900 dark:text-blue-300 mt-1 break-all selection:bg-blue-200">
-                    tu-bot@tu-proyecto.iam.gserviceaccount.com
-                  </p>
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={savingCalendar}
-                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none transition-colors disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" />
-                {savingCalendar ? 'Guardando...' : 'Guardar Conexiones'}
-              </button>
-            </form>
-          </section>
-        </div>
-
-        {/* Lado Derecho: Seguridad */}
-        <section className="h-full">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col">
-            <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-center gap-3">
-              <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
-                <Lock className="h-5 w-5" />
-              </div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Seguridad y Acceso</h2>
-            </div>
-            <form onSubmit={handlePasswordSubmit} className="p-6 space-y-6 flex-1">
-              <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800/50 flex gap-3 items-start">
-                <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed">
-                  Para cambiar tu contraseña, debes introducir la clave actual por motivos de seguridad.
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Tu ritmo en el umbral anaeróbico (ej: 4:30)
                 </p>
               </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="current" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Contraseña Actual</label>
-                  <input
-                    type="password"
-                    id="current"
-                    value={passwords.current}
-                    onChange={(e) => setPasswords({...passwords, current: e.target.value})}
-                    className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    required
-                  />
-                </div>
-                <div className="pt-4 border-t border-gray-100 dark:border-gray-700/50">
-                  <label htmlFor="new" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nueva Contraseña</label>
-                  <input
-                    type="password"
-                    id="new"
-                    value={passwords.new}
-                    onChange={(e) => setPasswords({...passwords, new: e.target.value})}
-                    className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="confirm" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Nueva Contraseña</label>
-                  <input
-                    type="password"
-                    id="confirm"
-                    value={passwords.confirm}
-                    onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
-                    className="block w-full sm:text-sm border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-700 dark:text-white py-2.5 px-4 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 mt-auto">
-                <button
-                  type="submit"
-                  disabled={changingPassword}
-                  className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none transition-colors disabled:opacity-50"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  {changingPassword ? 'Actualizando...' : 'Actualizar Contraseña'}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </section>
 
-      </div>
+        {/* Bloque 2: Gestión de Zonas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <ZoneEditor
+            zones={powerZones}
+            zoneType="power"
+            onZoneChange={handleZoneChange}
+            onAutoCalculate={calculatePowerZones}
+          />
+          <ZoneEditor
+            zones={hrZones}
+            zoneType="hr"
+            onZoneChange={handleZoneChange}
+            onAutoCalculate={calculateHrZones}
+          />
+        </div>
+
+        {/* Predicciones de Rendimiento */}
+        {racePredictions && (racePredictions.cycling?.length > 0 || racePredictions.running?.length > 0) && (
+          <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/10 flex items-center gap-2">
+              <Target className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="font-semibold text-gray-900 dark:text-white">Predicciones de Rendimiento</h2>
+              <span className="ml-auto text-[10px] text-gray-400">Basado en tus zonas actuales</span>
+            </div>
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {racePredictions.cycling?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-3">Ciclismo (Critical Power)</p>
+                  <div className="space-y-2">
+                    {racePredictions.cycling.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 dark:text-gray-400">{p.duration_label}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{p.predicted_power_w} W</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {racePredictions.running?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-3">Running (Riegel)</p>
+                  <div className="space-y-2">
+                    {racePredictions.running.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 dark:text-gray-400">{p.distance_label}</span>
+                        <div className="text-right">
+                          <div className="font-bold text-gray-900 dark:text-white">{p.predicted_time}</div>
+                          <div className="text-[10px] text-gray-400">{p.predicted_pace}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Bloque 3: Configuración del Coach IA (AL FINAL) */}
+        <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/10 flex items-center gap-2">
+            <Brain className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="font-semibold text-gray-900 dark:text-white">Configuración Coach IA</h2>
+          </div>
+          <div className="p-6 space-y-6">
+            <div>
+              <div className="flex items-center justify-between">
+                <label htmlFor="athlete_context" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contexto y Perfil Deportivo</label>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {(settings.athlete_context || '').length} caracteres
+                </span>
+              </div>
+              <textarea
+                id="athlete_context"
+                name="athlete_context"
+                rows={10}
+                value={settings.athlete_context}
+                onChange={handleChange}
+                className="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white p-3 resize-y min-h-[220px] leading-relaxed"
+                placeholder="Ej: Ciclista amateur de 35 años que compite en marchas cicloturistas. Entreno unas 8-10 horas semanales. Los lunes hago fuerza, martes y jueves salgo en bici 2-3 horas y el fin de semana hago una tirada larga..."
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Cuanto más detalle des (disponibilidad, lesiones, disciplina, objetivos), mejor será el análisis y el plan del coach.
+              </p>
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <label htmlFor="athlete_goal" className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <Target className="h-4 w-4 text-gray-400" />
+                  Objetivo Actual
+                </label>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {(settings.athlete_goal || '').length} caracteres
+                </span>
+              </div>
+              <textarea
+                id="athlete_goal"
+                name="athlete_goal"
+                rows={10}
+                value={settings.athlete_goal}
+                onChange={handleChange}
+                className="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white p-3 resize-y min-h-[220px] leading-relaxed"
+                placeholder="Ej: Mejorar mi potencia en subidas de 20 minutos de cara a la marcha de junio."
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Describe el objetivo (carrera, fecha, marca o mantenimiento) con el nivel de detalle que necesites.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div className="flex justify-end sticky bottom-6 z-10">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex justify-center items-center gap-2 py-3 px-10 border border-transparent shadow-2xl text-lg font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all transform hover:scale-105"
+          >
+            <Save className="h-6 w-6" />
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
