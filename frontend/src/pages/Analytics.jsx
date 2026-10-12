@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { formatWatts, formatBpm, formatIF } from '../utils/format';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -46,7 +45,7 @@ const Analytics = () => {
   const [efData, setEfData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingVolume, setLoadingVolume] = useState(false);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -71,7 +70,7 @@ const Analytics = () => {
           })
         ]);
         setError(null);
-      } catch (err) {
+      } catch {
         setError('Error al cargar algunos datos de análisis.');
       } finally {
         setLoading(false);

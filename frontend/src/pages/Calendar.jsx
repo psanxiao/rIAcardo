@@ -11,7 +11,6 @@ import {
   endOfWeek, 
   isSameMonth, 
   isSameDay, 
-  addDays, 
   eachDayOfInterval,
   parseISO
 } from 'date-fns';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { formatDuration, formatDistance, formatDistanceKm, formatSpeedKmh, formatPace, formatWatts, formatBpm, formatIF } from '../utils/format';
+import { formatDuration, formatDistance, formatSpeedKmh, formatPace, formatWatts, formatBpm, formatIF } from '../utils/format';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -280,7 +280,7 @@ const ActivityDetail = () => {
         if (res.data.activity.coach_analysis) {
           setAnalysis(res.data.activity.coach_analysis);
         }
-      } catch (err) {
+      } catch {
         setError('Error al cargar la actividad.');
       } finally {
         setLoading(false);
@@ -451,7 +451,6 @@ const ActivityDetail = () => {
         {(() => {
           const sport = (activity.sport || '').toLowerCase();
           const isRunning = sport.includes('run');
-          const isCycling = sport.includes('ride') || sport.includes('cycl') || sport.includes('virtual');
 
           const common = [
             ['Distancia', `${formatDistance(activity.distance_km * 1000)} km`],

@@ -1,5 +1,7 @@
 # rIAcardo — Cycling & Running Performance Analytics
 
+[![CI](https://github.com/psanxiao/rIAcardo/actions/workflows/ci.yml/badge.svg)](https://github.com/psanxiao/rIAcardo/actions/workflows/ci.yml)
+
 Platform for cycling and running performance analysis with an AI coach (Groq).
 
 **🌐 [English](README.md) · [Español](README.es.md)**

@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { format, addDays, subDays, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { format, addDays, subDays } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../services/api';
-import { formatDurationMinutes, formatDistanceKm, formatSpeedKmh, formatWatts, formatBpm } from '../utils/format';
+import { formatDistanceKm } from '../utils/format';
 import { Modal, Spinner } from '../components/ui';
 import KpiGrid from '../components/dashboard/KpiGrid';
 import WeeklyComplianceWidget from '../components/dashboard/WeeklyComplianceWidget';
@@ -31,8 +30,8 @@ const Dashboard = () => {
   const [complianceDate, setComplianceDate] = useState(new Date());
   const [complianceData, setComplianceData] = useState(null);
   const [loadingCompliance, setLoadingCompliance] = useState(false);
-  const [error, setError] = useState(null);
-  const [analysisPeriod, setAnalysisPeriod] = useState(() => parseInt(localStorage.getItem('analytics_period') || '6'));
+  const [, setError] = useState(null);
+  const [analysisPeriod] = useState(() => parseInt(localStorage.getItem('analytics_period') || '6'));
   const [showConnectForm, setShowConnectForm] = useState(false);
   const [garminEmail, setGarminEmail] = useState('');
   const [garminPassword, setGarminPassword] = useState('');
@@ -237,7 +236,6 @@ const Dashboard = () => {
       <WeeklyComplianceWidget
         complianceData={complianceData}
         loadingCompliance={loadingCompliance}
-        currentDate={complianceDate}
         onPrevWeek={() => setComplianceDate(subDays(complianceDate, 7))}
         onNextWeek={() => setComplianceDate(addDays(complianceDate, 7))}
       />

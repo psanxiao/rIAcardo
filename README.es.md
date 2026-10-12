@@ -2,6 +2,8 @@
 
 # rIAcardo — Análisis de Rendimiento Deportivo
 
+[![CI](https://github.com/psanxiao/rIAcardo/actions/workflows/ci.yml/badge.svg)](https://github.com/psanxiao/rIAcardo/actions/workflows/ci.yml)
+
 Plataforma de análisis de rendimiento para ciclismo y running con coach IA (Groq).
 
 ## Instalación Rápida

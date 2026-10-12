@@ -1,8 +1,8 @@
-import { format, addDays, subDays, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
 
-const WeeklyComplianceWidget = ({ complianceData, loadingCompliance, currentDate, onPrevWeek, onNextWeek }) => {
+const WeeklyComplianceWidget = ({ complianceData, loadingCompliance, onPrevWeek, onNextWeek }) => {
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between mb-6">

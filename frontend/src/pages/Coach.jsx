@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ReactMarkdown from 'react-markdown';
@@ -12,13 +11,11 @@ import {
 } from 'lucide-react';
 
 const Coach = () => {
-  const { user } = useAuth();
   const [report, setReport] = useState(null);
   const [date, setDate] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const MarkdownComponents = {
@@ -82,12 +79,6 @@ const Coach = () => {
       }
     } catch (err) { console.error('Error:', err); toast.error('Error al generar el informe'); }
     finally { setGenerating(false); }
-  };
-
-  const getReportTitle = (content) => {
-    if (!content) return "Informe";
-    const match = content.match(/^# (.*)/m);
-    return match ? match[1] : "Análisis Semanal";
   };
 
   return (
