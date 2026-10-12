@@ -1,0 +1,18 @@
+[Unit]
+Description=rIAcardo — análisis de rendimiento deportivo
+Documentation=https://github.com/
+After=network.target
+
+[Service]
+Type=simple
+# Sustituye __PROJECT_DIR__ por la ruta del proyecto y __USER__ por tu usuario:
+#   sed "s|__PROJECT_DIR__|$PWD|g; s|__USER__|$USER|g" deploy/riacardo.service > /etc/systemd/system/riacardo.service
+WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=__PROJECT_DIR__/.env
+ExecStart=__PROJECT_DIR__/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 9000
+Restart=on-failure
+RestartSec=5
+User=__USER__
+
+[Install]
+WantedBy=multi-user.target

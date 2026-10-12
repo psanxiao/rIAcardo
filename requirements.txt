@@ -1,0 +1,30 @@
+# rIAcardo — dependencias de producción (Python 3.11+)
+# Instala con: pip install -r requirements.txt
+
+# Web / API
+fastapi==0.135.1
+uvicorn==0.41.0
+pydantic==2.12.5
+python-dotenv==1.2.2
+
+# Seguridad
+cryptography==46.0.5
+python-jose==3.5.0
+bcrypt==5.0.0
+slowapi==0.1.10
+
+# Base de datos
+psycopg2-binary==2.9.11
+
+# Integraciones
+garminconnect==0.3.6
+google-auth==2.49.1
+google-api-python-client==2.192.0
+
+# Análisis de datos y ficheros
+pandas==3.0.1
+numpy==2.4.3
+fitparse==1.2.0
+
+# Coach IA (Groq vía API HTTP compatible con OpenAI)
+httpx==0.28.1

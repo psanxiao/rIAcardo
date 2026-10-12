@@ -1,0 +1,6 @@
+# rIAcardo — dependencias de desarrollo
+# Instala con: pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest==9.0.3
