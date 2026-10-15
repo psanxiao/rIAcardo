@@ -56,6 +56,7 @@ Plataforma de análisis de rendimiento para ciclismo y running con coach IA (Gro
    - `JWT_SECRET_KEY`: genera con `openssl rand -hex 32`
    - `GROQ_API_KEY`: obtén una en [Groq Cloud](https://console.groq.com/)
    - `ALLOWED_ORIGINS`: opcional, para CORS en red local
+   - `PLAN_GENERATION_HOUR`: opcional, hora del servidor (0-23, por defecto `6`) a la que se ejecuta la generación automática de la planificación (que cada atleta la use o no es decisión suya, desde la página "Atleta")
 
 6. **Instalar dependencias del frontend**:
    ```bash
@@ -83,6 +84,23 @@ La app estará disponible en `http://localhost:9000` (prod) o `http://localhost:
 
 Para desplegar de forma persistente (por ejemplo en un servidor o un mac mini
 con Tailscale) consulta **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
+## Planificación automática y notificaciones
+
+El atleta puede activar la planificación automática desde la página **Atleta**.
+Es una decisión por usuario: activa el interruptor, elige la cadencia
+(**semanal** o **quincenal**) y el **día de la semana** en que quiere recibirla.
+Ese día el servidor genera automáticamente el informe del coach IA y el plan de
+entrenamiento de los próximos 7 días, y crea una notificación in‑app que aparece
+en la campana de la cabecera. Si lo desactiva, no se genera nada automáticamente
+y puede crear el informe cuando quiera desde la página **Coach IA**.
+
+El proceso de generación se ejecuta a diario dentro del proceso de la API a la
+hora `PLAN_GENERATION_HOUR` (por defecto `06:00`, hora local del servidor) y solo
+actúa sobre los atletas que lo tienen activado. Si el servidor estaba apagado a
+esa hora, se recupera en el siguiente arranque.
 
 ---
 

@@ -12,6 +12,7 @@ from api.routes.garmin_routes import router as garmin_router
 from api.routes.analysis_routes import router as analysis_router
 from api.routes.coach_routes import router as coach_router
 from api.routes.settings_routes import router as settings_router
+from api.routes.notification_routes import router as notification_router
 from api.services.sync_service import resume_interrupted_syncs
 
 app = FastAPI(title="rIAcardo API", description="SaaS Backend for Cycling Performance Analysis")
@@ -32,8 +33,21 @@ async def startup_event():
     # Resume any syncs that were interrupted when the server stopped
     await resume_interrupted_syncs()
 
+    # Start the automatic plan generation scheduler (disable with SCHEDULER_ENABLED=false)
+    try:
+        from api.services.scheduler_service import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        print(f"[INIT] Scheduler startup error: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
+    try:
+        from api.services.scheduler_service import shutdown_scheduler
+        shutdown_scheduler()
+    except Exception as e:
+        print(f"[SHUTDOWN] Scheduler shutdown error: {e}")
+
     from api.dependencies.database import close_all_connections
     close_all_connections()
 
@@ -43,6 +57,7 @@ app.include_router(garmin_router)
 app.include_router(analysis_router)
 app.include_router(coach_router)
 app.include_router(settings_router)
+app.include_router(notification_router)
 
 # CORS: localhost (dev) + cualquier IP de Tailscale (100.64.0.0/10) + dominios custom
 # Tailscale usa IPs 100.64.x.x a 100.127.x.x (CGNAT range)

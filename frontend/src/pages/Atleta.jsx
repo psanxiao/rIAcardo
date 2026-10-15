@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import api from '../services/api';
 import { Spinner } from '../components/ui';
 import ZoneEditor from '../components/settings/ZoneEditor';
+import PlanningSchedule from '../components/settings/PlanningSchedule';
 import { Save, AlertCircle, User, Target, Brain } from 'lucide-react';
 
 const Atleta = () => {
@@ -388,6 +389,8 @@ const Atleta = () => {
             </div>
           </div>
         </section>
+
+        <PlanningSchedule />
 
         <div className="flex justify-end sticky bottom-6 z-10">
           <button

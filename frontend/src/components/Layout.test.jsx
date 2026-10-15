@@ -11,6 +11,10 @@ vi.mock('../context/ThemeContext', () => ({
   useTheme: () => ({ isDark: false, toggleTheme: vi.fn() }),
 }));
 
+vi.mock('./NotificationsBell', () => ({
+  default: () => null,
+}));
+
 const renderLayout = () =>
   render(
     <MemoryRouter initialEntries={['/dashboard']}>

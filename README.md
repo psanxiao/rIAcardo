@@ -56,6 +56,7 @@ Platform for cycling and running performance analysis with an AI coach (Groq).
    - `JWT_SECRET_KEY`: generate with `openssl rand -hex 32`
    - `GROQ_API_KEY`: get one at [Groq Cloud](https://console.groq.com/)
    - `ALLOWED_ORIGINS`: optional, extra CORS origins for local network use
+   - `PLAN_GENERATION_HOUR`: optional, server hour (0-23, default `6`) at which automatic plan generation runs (whether each athlete uses it is their own choice, from the Atleta page)
 
 6. **Install frontend dependencies**:
    ```bash
@@ -83,6 +84,22 @@ The app will be available at `http://localhost:9000` (production) or `http://loc
 
 For persistent deployment (e.g., on a server or a Tailscale-connected Mac mini),
 see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
+## Automatic Planning & Notifications
+
+Athletes can opt into automatic planning from the **Atleta** page. This is a
+per-user decision: turn the toggle on, choose a cadence (**weekly** or
+**biweekly**) and the **day of the week** they want to receive it. On that day,
+the server generates the AI coach report and the next 7‑day training plan
+automatically, then creates an in‑app notification shown by the bell in the
+header. If they turn it off, nothing is generated automatically and they can
+create a report on demand from the **Coach IA** page whenever they want.
+
+The background job runs daily inside the API process at `PLAN_GENERATION_HOUR`
+(default `06:00`, server local time) and only acts on athletes who have it
+enabled. If the server was down at that time, it catches up on the next startup.
 
 ---
 

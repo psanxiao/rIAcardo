@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import NotificationsBell from './NotificationsBell';
 import { 
   Home, 
   Activity, 
@@ -153,7 +154,8 @@ const Layout = () => {
             </h1>
           </div>
           
-          <div className="flex-1 flex justify-end">
+          <div className="flex-1 flex justify-end items-center gap-1">
+            <NotificationsBell />
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"

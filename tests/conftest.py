@@ -7,6 +7,8 @@ import os
 # before importing the app, because the coach service reads env vars at import
 # time and python-dotenv does not override already-set variables.
 os.environ.setdefault("GROQ_API_KEY", "test-groq-api-key")
+# Keep the automatic plan scheduler from running during tests.
+os.environ.setdefault("SCHEDULER_ENABLED", "false")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -28,3 +28,6 @@ fitparse==1.2.0
 
 # Coach IA (Groq vía API HTTP compatible con OpenAI)
 httpx==0.28.1
+
+# Planificación automática (scheduler in-process)
+apscheduler==3.11.0
