@@ -1,6 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
 
 const WeeklyComplianceWidget = ({ complianceData, loadingCompliance, onPrevWeek, onNextWeek }) => {
   return (
@@ -48,6 +49,17 @@ const WeeklyComplianceWidget = ({ complianceData, loadingCompliance, onPrevWeek,
           </div>
         </div>
       </div>
+
+      {complianceData && (
+        <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+          <Link
+            to={`/semana?date=${complianceData.start_date}`}
+            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+          >
+            Ver resumen completo de la semana <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 };

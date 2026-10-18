@@ -17,6 +17,7 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Coach = lazy(() => import('./pages/Coach'));
 const Cuenta = lazy(() => import('./pages/Cuenta'));
 const Help = lazy(() => import('./pages/Help'));
+const WeeklySummary = lazy(() => import('./pages/WeeklySummary'));
 
 const PageLoader = () => (
   <div className="flex h-64 items-center justify-center">
@@ -43,6 +44,7 @@ function App() {
                 <Route path="/activity/:id" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><ActivityDetail /></Suspense></ErrorBoundary>} />
                 <Route path="/analytics" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Analytics /></Suspense></ErrorBoundary>} />
                 <Route path="/coach" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Coach /></Suspense></ErrorBoundary>} />
+                <Route path="/semana" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><WeeklySummary /></Suspense></ErrorBoundary>} />
                 <Route path="/cuenta" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Cuenta /></Suspense></ErrorBoundary>} />
                 <Route path="/settings" element={<Navigate to="/cuenta" replace />} />
                 <Route path="/help" element={<ErrorBoundary><Suspense fallback={<PageLoader />}><Help /></Suspense></ErrorBoundary>} />

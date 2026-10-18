@@ -613,3 +613,144 @@ def get_weekly_tss_comparison(conn, user_id: str, date_str: str) -> dict:
         "actual_tss": round(float(actual_tss), 0),
         "compliance_pct": round((actual_tss / planned_tss * 100), 1) if planned_tss > 0 else 0
     }
+
+
+def _weekly_day_status(has_planned: bool, planned_tss: float, has_actual: bool, actual_tss: float) -> str:
+    """Classifies a single day of the week by how it matched the plan."""
+    if not has_planned and not has_actual:
+        return "rest"
+    if has_planned and not has_actual:
+        return "rest" if planned_tss <= 0 else "missed"
+    if not has_planned:
+        return "extra" if actual_tss > 0 else "rest"
+    if planned_tss <= 0:
+        return "extra"
+    ratio = actual_tss / planned_tss
+    return "completed" if ratio >= 0.85 else "partial"
+
+
+def _weekly_balance(daily_tss: list) -> dict:
+    """Rest days and Foster's monotony for a 7-day series of daily TSS."""
+    if not daily_tss:
+        return {"rest_days": 0, "monotony": None}
+    arr = np.asarray(daily_tss, dtype=float)
+    rest_days = int(np.sum(arr == 0))
+    mean = float(np.mean(arr))
+    sd = float(np.std(arr))
+    return {"rest_days": rest_days, "monotony": round(mean / sd, 2) if sd > 0 else None}
+
+
+def get_weekly_summary(conn, user_id: str, date_str: str) -> dict:
+    """
+    Aggregates everything that happened in a training week (Monday to Sunday,
+    matching get_weekly_tss_comparison): planned vs actual TSS per day,
+    adherence, sport breakdown, volumes and training load context.
+    """
+    from datetime import datetime, timedelta
+    from api.services.analysis_service import get_activities_list, _summarize_by_sport
+
+    target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    start_of_week = target_date - timedelta(days=target_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    # 1. Planned workouts, grouped by day
+    planned_by_day = {}
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT date, title, description, workout_type, duration_min, tss_planned "
+            "FROM public.planned_workouts WHERE user_id = %s AND date >= %s AND date <= %s "
+            "ORDER BY date ASC",
+            (user_id, start_of_week, end_of_week)
+        )
+        for row in cursor.fetchall():
+            planned_by_day.setdefault(str(row[0]), []).append({
+                "title": row[1],
+                "description": row[2],
+                "type": row[3],
+                "duration_min": row[4] or 0,
+                "tss": round(float(row[5] or 0), 1),
+            })
+
+    # 2. Actual activities for the week
+    activities = get_activities_list(
+        conn, user_id,
+        datetime.combine(start_of_week, datetime.min.time()),
+        datetime.combine(end_of_week, datetime.max.time()),
+    )
+    actual_by_day = {}
+    for a in activities:
+        actual_by_day.setdefault(a['date'], []).append(a)
+
+    weekdays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+    days = []
+    planned_tss_total = 0.0
+    actual_tss_total = 0.0
+    for i in range(7):
+        d = start_of_week + timedelta(days=i)
+        key = str(d)
+        planned = planned_by_day.get(key, [])
+        actual = sorted(actual_by_day.get(key, []), key=lambda x: x.get('start_time') or '')
+        p_tss = round(sum(w['tss'] for w in planned), 1)
+        a_tss = round(sum(float(x.get('tss') or 0) for x in actual), 1)
+        planned_tss_total += p_tss
+        actual_tss_total += a_tss
+        days.append({
+            "date": key,
+            "weekday": weekdays[i],
+            "planned": planned,
+            "actual": [
+                {
+                    "activity_id": x.get('activity_id'),
+                    "sport": x.get('sport'),
+                    "tss": round(float(x.get('tss') or 0), 1),
+                    "duration_min": x.get('duration_min'),
+                    "distance_km": x.get('distance_km'),
+                    "ascent_m": x.get('ascent_m'),
+                    "start_time": x.get('start_time'),
+                }
+                for x in actual
+            ],
+            "planned_tss": p_tss,
+            "actual_tss": a_tss,
+            "status": _weekly_day_status(bool(planned), p_tss, bool(actual), a_tss),
+        })
+
+    summary = {
+        "start_date": str(start_of_week),
+        "end_date": str(end_of_week),
+        "planned_tss": round(planned_tss_total, 0),
+        "actual_tss": round(actual_tss_total, 0),
+        "compliance_pct": round(actual_tss_total / planned_tss_total * 100, 1) if planned_tss_total > 0 else 0,
+        "totals": {
+            "sessions": len(activities),
+            "duration_min": round(sum(float(a.get('duration_min') or 0) for a in activities), 0),
+            "distance_km": round(sum(float(a.get('distance_km') or 0) for a in activities), 1),
+            "ascent_m": round(sum(float(a.get('ascent_m') or 0) for a in activities), 0),
+        },
+        "sport_breakdown": _summarize_by_sport(activities),
+        "days": days,
+        "activities": activities,
+        "balance": _weekly_balance([d['actual_tss'] for d in days]),
+    }
+
+    # 3. Training load context for the week (best-effort, never fails the summary)
+    try:
+        load = get_training_load(conn, user_id, months=3)
+        dates = load.get('dates', [])
+        idx = [j for j, dt in enumerate(dates) if str(start_of_week) <= dt <= str(end_of_week)]
+        if idx:
+            summary['load'] = {
+                "dates": [dates[j] for j in idx],
+                "ctl": [load['ctl'][j] for j in idx],
+                "atl": [load['atl'][j] for j in idx],
+                "tsb": [load['tsb'][j] for j in idx],
+                "ctl_change": round(load['ctl'][idx[-1]] - load['ctl'][idx[0]], 1),
+                "tsb_end": load['tsb'][idx[-1]],
+            }
+        else:
+            summary['load'] = None
+    except Exception as e:
+        print(f"[WEEKLY SUMMARY] load context error: {e}")
+        summary['load'] = None
+
+    return summary

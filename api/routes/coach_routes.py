@@ -5,7 +5,8 @@ from api.services.coach_service import (
     generate_coach_report,
     get_upcoming_workouts,
     analyze_single_activity,
-    get_weekly_tss_comparison
+    get_weekly_tss_comparison,
+    get_weekly_summary
 )
 from api.dependencies.limiter import limiter
 
@@ -24,6 +25,26 @@ def weekly_tss_comparison(
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         return get_weekly_tss_comparison(conn, user_id, date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.get("/weekly-summary")
+def weekly_summary(
+    date: str = Query(..., description="Any date in the target week (YYYY-MM-DD)"),
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Returns an aggregated summary of a training week: planned vs actual TSS per
+    day, adherence, sport breakdown, volumes and training load context.
+    """
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        return get_weekly_summary(conn, user_id, date)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
