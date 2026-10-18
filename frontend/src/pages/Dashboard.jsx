@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { format, addDays, subDays } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -30,6 +30,10 @@ const Dashboard = () => {
   const [complianceDate, setComplianceDate] = useState(new Date());
   const [complianceData, setComplianceData] = useState(null);
   const [loadingCompliance, setLoadingCompliance] = useState(false);
+  // Keep the latest selected week available to async refreshes (sync completion
+  // happens outside the compliance effect, so it must not use a stale closure).
+  const complianceDateRef = useRef(complianceDate);
+  complianceDateRef.current = complianceDate;
   const [, setError] = useState(null);
   const [analysisPeriod] = useState(() => parseInt(localStorage.getItem('analytics_period') || '6'));
   const [showConnectForm, setShowConnectForm] = useState(false);
@@ -79,7 +83,7 @@ const Dashboard = () => {
   const fetchCompliance = async () => {
     try {
       setLoadingCompliance(true);
-      const dateStr = format(complianceDate, 'yyyy-MM-dd');
+      const dateStr = format(complianceDateRef.current, 'yyyy-MM-dd');
       const res = await api.get(`/api/coach/weekly-tss?date=${dateStr}`);
       setComplianceData(res.data);
     } catch (err) {
@@ -94,7 +98,10 @@ const Dashboard = () => {
       const res = await api.get('/api/garmin/status');
       setGarminStatus(res.data);
       if (garminStatus.sync_status !== 'COMPLETED' && res.data.sync_status === 'COMPLETED') {
+        // A finished sync changes all the dashboard data (load, activities and
+        // the weekly compliance), so refresh every section, not just the KPIs.
         fetchDashboardData();
+        fetchCompliance();
       }
     } catch (err) {
       console.error('Error refreshing status:', err);
