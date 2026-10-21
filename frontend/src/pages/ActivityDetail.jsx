@@ -445,13 +445,17 @@ const ActivityDetail = () => {
   const { activity, laps } = data;
 
   const garminCtx = data.enriched_context || {};
-  const garminSummary = isRunning ? [
-    ['Temp. media', garminCtx.temperature_avg_c, (v) => `${Math.round(v)} °C`],
-    ['Zancada', garminCtx.stride_length_m, (v) => `${Number(v).toFixed(2)} m`],
-    ['Pasos', garminCtx.steps, (v) => Math.round(v).toLocaleString('es-ES')],
-  ].filter(([, v]) => v !== undefined && v !== null) : [];
-
-  const garminRows = garminSummary.map(([label, val, fmt]) => [label, fmt(val)]);
+  const garminRows = [
+    ...(garminCtx.temperature_avg_c != null
+      ? [['Temp. media', `${Math.round(garminCtx.temperature_avg_c)} °C`]]
+      : []),
+    ...(isRunning && garminCtx.stride_length_m != null
+      ? [['Zancada', `${Number(garminCtx.stride_length_m).toFixed(2)} m`]]
+      : []),
+    ...(isRunning && garminCtx.steps != null
+      ? [['Pasos', Math.round(garminCtx.steps).toLocaleString('es-ES')]]
+      : []),
+  ];
   const pickGarmin = (labels) => garminRows.filter(([label]) => labels.includes(label));
   const movingTimeRows = activity.moving_time && activity.moving_time !== activity.duration_sec
     ? [['Tiempo Movimiento', formatDuration(activity.moving_time)]]
@@ -497,16 +501,18 @@ const ActivityDetail = () => {
       rows: [
         ['Potencia Media', `${formatWatts(activity.avg_power)} W`],
         ['P. Normalizada', `${formatWatts(activity.np)} W`],
-        ['Vel. Media', `${formatSpeedKmh(activity.avg_speed)} km/h`],
-        ['FC Media', `${formatBpm(activity.avg_hr)} bpm`],
+        ['IF', formatIF(activity.if)],
+        ['TSS', Math.round(activity.tss || 0)],
       ],
     },
     {
-      title: 'Carga',
+      title: 'Velocidad y FC',
       icon: Activity,
       rows: [
-        ['IF', formatIF(activity.if)],
-        ['TSS', Math.round(activity.tss || 0)],
+        ['Vel. Media', `${formatSpeedKmh(activity.avg_speed)} km/h`],
+        ['Vel. Máxima', `${formatSpeedKmh(activity.max_speed)} km/h`],
+        ['FC Media', `${formatBpm(activity.avg_hr)} bpm`],
+        ['FC Máxima', `${formatBpm(activity.max_hr)} bpm`],
         ['Cadencia', `${Math.round(activity.avg_cadence || 0)} rpm`],
       ],
     },
