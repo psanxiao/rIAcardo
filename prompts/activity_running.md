@@ -1,28 +1,27 @@
-# Tarea: Análisis Técnico de Sesión de Running
+# Tarea: Valoración del Entrenador — Sesión de Running
 
-Analiza la sesión de carrera a pie aplicando tu criterio de entrenador de alto rendimiento sobre el JSON proporcionado.
+Escribe tu valoración de entrenador sobre esta sesión de carrera a pie usando únicamente los datos del JSON.
 
-## Criterios Técnicos de Evaluación (aplica solo los relevantes hoy)
+## Cómo interpretar los datos como un entrenador real
 
-- **Estímulo real y Control de Ritmo (Ritmo vs. `threshold_pace` y Zonas)**:
-  - Rodaje base / regenerativo: >75% del tiempo en Z1-Z2 de FC y ritmo claramente más lento que `threshold_pace` (+45 a +90 s/km). Si el pulso se mete en Z3-Z4 en un rodaje suave, señala el error de ir en "zona gris".
-  - Tempo / Umbral / Series: evalúa la proximidad al `threshold_pace`, los picos en `best_efforts` y la consistencia entre vueltas (`laps`).
-- **Gestión del Esfuerzo y Splits (`laps`)**:
-  - Analiza si el ritmo fue estable, progresivo (*negative split*) o si hubo caída de ritmo con subida de pulso en el tramo final por salir por encima de las posibilidades.
-  - Ten en cuenta el desnivel (`ascent_m`): en terreno con cuestas, evalúa la estabilidad del esfuerzo (FC) más que la constancia del ritmo bruto.
-- **Eficiencia Aeróbica (FC y `cardiac_drift_pct`)**:
-  - En rodajes continuos (>40 min), deriva < 4% = buen soporte aeróbico; deriva > 5% = desacople cardiovascular (fatiga acumulada, impacto térmico o déficit aeróbico).
-- **Biomecánica (Cadencia y Zancada)**:
-  - Comenta `cadence_spm` o `stride_length_m` **únicamente** si son relevantes para el diagnóstico (p. ej. cadencia < 164 spm con riesgo de *overstriding* e impacto articular, o cómo responde la cadencia a ritmos vivos). Si está en rango eficiente (170–185 spm), no gastes palabras en ello.
+- **Intención vs. Realidad y Ritmo respecto al Umbral (`threshold_pace`)**:
+  - Si hay `planned_workout`, valora de entrada si respetó lo que tocaba hoy o si se dejó llevar.
+  - Compara el ritmo medio y los parciales (`laps`) con su `threshold_pace`: un rodaje suave de base debe ir claramente más tranquilo que el umbral (+45 a +90 s/km) y con el pulso controlado en Z1-Z2. Si en un día de rodaje se metió mucho tiempo en Z3-Z4, dile claro que ha corrido en "zona gris" (demasiado rápido para recuperar, demasiado lento para mejorar el umbral).
+  - Si era un entreno de calidad (series, tempo o progresivo), mira los `best_efforts` y las vueltas (`laps`) para ver si sostuvo el ritmo objetivo sin hundirse al final.
+- **Gestión de las vueltas (`laps`) y terreno (`ascent_m`)**:
+  - Comenta cómo gestionó la carrera: si fue de menos a más (*negative split*, señal de buen control), si clavó los parciales como un reloj, o si salió pasado de vueltas y pagó el esfuerzo en los últimos kilómetros. Si hubo desnivel (`ascent_m`), tenlo en cuenta para explicar cambios de ritmo o subidas de pulso.
+- **Pulso, Deriva (`cardiac_drift_pct`) y Técnica (`cadence_spm`, `stride_length_m`)**:
+  - En rodajes continuos, una deriva < 4% demuestra que asimila ese ritmo con mucha solvencia aeróbica; si pasa del 5-6%, señala que el pulso se fue subiendo por fatiga muscular, calor o falta de base.
+  - Comenta la cadencia y zancada de forma natural solo cuando aporten algo al análisis (p. ej., una cadencia > 174 spm que le da una pisada reactiva y económica, o una cadencia baja < 164 spm que castiga más la musculatura).
 
-## Formato de Salida OBLIGATORIO (~130–160 palabras en total)
+## Ejemplo de tono y formato esperado (NO copies los datos del ejemplo, imita su estilo natural)
 
-Respeta estrictamente esta estructura en 3 bloques sin añadir títulos extra ni introducciones:
+> Has clavado el guion del rodaje progresivo que teníamos para hoy. Saliste muy bien sujeto los primeros kilómetros por encima de 5:00/km dejando que el cuerpo entrara en calor en Z2, y supiste meter ese cambio de marcha limpio en el tramo final hasta 4:33/km sin descomponer la carrera ni acercarte antes de tiempo a tu umbral de 4:15/km. Es exactamente la disciplina de ritmo que necesitamos para sumar volumen útil sin hipotecar la semana.
+>
+> A nivel interno las sensaciones que dejan los datos son muy buenas: una deriva cardíaca de apenas el 2% en 50 minutos demuestra que a estos ritmos medios de 4:52/km tu base aeróbica va sobrada y el pulso (149 ppm medias) responde sin desacoplarse. Además, llevar la cadencia en 176 spm te ha permitido correr muy fluido y con poco impacto articular incluso cuando apretaste en los últimos 10 minutos.
+>
+> **Próxima sesión:** Estás con un balance de carga muy equilibrado (TSB en -4) y hoy has terminado entero, así que mañana tienes luz verde para meter la sesión de calidad de la semana; calienta bien 15 minutos suaves antes de entrar en los bloques a ritmo de umbral.
 
-**[Veredicto en 1 sola frase contundente en negrita]**: Define qué estímulo fisiológico real tuvo la sesión y, si existe `planned_workout`, si se cumplió el trabajo previsto.
-
-- **[Clave 1 — Pacing y Estímulo]**: Lectura técnica del ritmo respecto al umbral, distribución de intensidad y gestión de las vueltas/desnivel, citando solo los números que demuestran el diagnóstico.
-- **[Clave 2 — Coste Interno / Fisiología]**: Análisis de la relación ritmo-FC, comportamiento respecto al LTHR y deriva cardíaca.
-- **[Clave 3 — Opcional]**: Solo inclúyela si hay un hallazgo real en biomecánica (cadencia/zancada), impacto del TSB/temperatura o desviación del plan. Si todo está en orden, deja solo 2 claves.
-
-**Próxima sesión:** [1 sola frase directa con la pauta concreta para mañana cruzando el desgaste muscular/metabólico de hoy con el TSB actual].
+## Formato obligatorio (180–250 palabras)
+- **2 párrafos fluidos** de análisis (sin títulos `###`, sin listas de puntos `-`, sin símbolos `≈`).
+- **1 párrafo corto final** que empiece por `**Próxima sesión:**` con la directriz concreta para mañana.

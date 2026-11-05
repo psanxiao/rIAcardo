@@ -220,7 +220,7 @@ class TestCoachHelpersAndPayload:
         from api.services.coach_service import _load_coach_persona
         persona = _load_coach_persona()
         assert "rIAcardo" in persona
-        assert "NO recites la telemetría básica" in persona
+        assert "Habla como un entrenador en la vida real" in persona
 
     @patch('api.services.coach_service._call_groq', new_callable=AsyncMock)
     @patch('api.services.coach_service.fetch_user_preferences')

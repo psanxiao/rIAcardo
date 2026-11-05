@@ -58,13 +58,16 @@ def _load_coach_persona() -> str:
 
 
 def _compact_zones(zones: dict | None) -> dict | None:
-    """Keeps only zones with actual time/percentage to avoid prompt noise."""
+    """Keeps only zones with actual time/percentage (rounded) to avoid prompt noise."""
     if not isinstance(zones, dict):
         return None
     out = {}
     for z, vals in zones.items():
-        if isinstance(vals, dict) and (vals.get("pct", 0) or vals.get("min", 0)):
-            out[z] = vals
+        if isinstance(vals, dict):
+            pct = round(float(vals.get("pct", 0) or 0))
+            mins = round(float(vals.get("min", 0) or 0))
+            if pct > 0 or mins > 0:
+                out[z] = {"min": mins, "pct": pct}
     return out or None
 
 
@@ -92,7 +95,10 @@ def _get_planned_workout_for_date(conn, user_id: str, start_time) -> dict | None
                     "tss_planned": round(float(row[4] or 0), 0),
                 }
     except Exception:
-        pass
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     return None
 
 
@@ -203,7 +209,12 @@ async def _call_groq(messages: list, temperature: float = 0.5, response_format: 
                 response = await client.post(GROQ_URL, headers=headers, json=payload)
                 if response.status_code == 200:
                     data = response.json()
-                    return data['choices'][0]['message']['content']
+                    content = (data['choices'][0]['message'].get('content') or '').strip()
+                    if content:
+                        return content
+                    last_error = f"Empty content from {current_model} (finish_reason={data['choices'][0].get('finish_reason')})"
+                    print(f"[GROQ] {last_error}, attempting next fallback...")
+                    break
 
                 error_detail = response.text
                 print(f"\n--- GROQ API ERROR ({current_model}) ---\nStatus: {response.status_code}\nResponse: {error_detail}\n--- END ERROR ---\n")
@@ -296,8 +307,8 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         threshold_pace_str = f"{int(tp_sec // 60)}:{int(tp_sec % 60):02d}"
 
     athlete_context = {
-        "ctl": ctl, "atl": atl, "tsb": tsb,
-        "weight_kg": prefs.get('weight') or None,
+        "ctl": round(ctl), "atl": round(atl), "tsb": round(tsb),
+        "weight_kg": round(float(prefs['weight'])) if prefs.get('weight') else None,
         "ftp": prefs.get('ftp') if not running else None,
         "lthr": prefs.get('lthr') or None,
         "threshold_pace": threshold_pace_str if running else None,
@@ -324,7 +335,9 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     cadence = activity.get('avg_cadence')
     tss = activity.get('tss')
     enriched_raw = activity_data.get('enriched_context') or {}
-    enriched = {k: v for k, v in enriched_raw.items() if k not in _REDUNDANT_ENRICHED_KEYS}
+    enriched = {}
+    if enriched_raw.get("temperature_avg_c") is not None:
+        enriched["temperature_avg_c"] = round(float(enriched_raw["temperature_avg_c"]))
     cardiac_drift = activity_data.get('cardiac_drift_pct')
 
     def is_valid(val):
@@ -336,20 +349,20 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
 
     # 5. Build summary_stats (sport-specific, no redundant fields)
     dist_m = (activity.get('distance_km') or 0) * 1000
-    dur_min = round(duration_sec / 60, 1)
-    mov_min = round(moving_time / 60, 1) if moving_time else None
+    dur_min = round(duration_sec / 60)
+    mov_min = round(moving_time / 60) if moving_time else None
 
     summary_stats = {
         "name": activity.get('name') or 'Actividad',
         "sport": sport,
         "duration_min": dur_min,
-        "moving_time_min": mov_min if mov_min and mov_min != dur_min else None,
+        "moving_time_min": mov_min if mov_min and abs(mov_min - dur_min) > 1 else None,
     }
 
     if is_valid(dist_m / 1000):
-        summary_stats["distance_km"] = round(dist_m / 1000, 2)
+        summary_stats["distance_km"] = round(dist_m / 1000, 1)
     if is_valid(activity.get('ascent_m')):
-        summary_stats["ascent_m"] = round(float(activity.get('ascent_m')), 0)
+        summary_stats["ascent_m"] = round(float(activity.get('ascent_m')))
 
     if cardiac_drift is not None and not is_valid(cardiac_drift):
         cardiac_drift = None
@@ -361,8 +374,8 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
             summary_stats["avg_pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
         if cadence and cadence > 0:
             summary_stats["cadence_spm"] = round(cadence)
-        if is_valid(avg_hr): summary_stats["avg_hr"] = float(avg_hr)
-        if is_valid(max_hr): summary_stats["max_hr"] = float(max_hr)
+        if is_valid(avg_hr): summary_stats["avg_hr"] = round(float(avg_hr))
+        if is_valid(max_hr): summary_stats["max_hr"] = round(float(max_hr))
         if is_valid(tss): summary_stats["tss"] = round(float(tss))
         if is_valid(activity.get('if')): summary_stats["intensity_factor"] = float(activity.get('if'))
         if is_valid(cardiac_drift): summary_stats["cardiac_drift_pct"] = round(float(cardiac_drift), 1)
@@ -375,16 +388,16 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         if w_prime and np.isnan(w_prime):
             w_prime = None
 
-        if is_valid(avg_power): summary_stats["avg_power"] = float(avg_power)
-        if is_valid(np_val): summary_stats["np"] = round(float(np_val), 0)
+        if is_valid(avg_power): summary_stats["avg_power"] = round(float(avg_power))
+        if is_valid(np_val): summary_stats["np"] = round(float(np_val))
         if is_valid(tss): summary_stats["tss"] = round(float(tss))
         if is_valid(vi): summary_stats["vi"] = vi
         if is_valid(activity.get('if')): summary_stats["intensity_factor"] = float(activity.get('if'))
         if is_valid(cardiac_drift): summary_stats["cardiac_drift_pct"] = round(float(cardiac_drift), 1)
-        if is_valid(cadence): summary_stats["avg_cadence_rpm"] = float(cadence)
-        if is_valid(avg_hr): summary_stats["avg_hr"] = float(avg_hr)
-        if is_valid(max_hr): summary_stats["max_hr"] = float(max_hr)
-        if w_prime: summary_stats["w_prime_joules"] = round(w_prime, 0)
+        if is_valid(cadence): summary_stats["avg_cadence_rpm"] = round(float(cadence))
+        if is_valid(avg_hr): summary_stats["avg_hr"] = round(float(avg_hr))
+        if is_valid(max_hr): summary_stats["max_hr"] = round(float(max_hr))
+        if w_prime: summary_stats["w_prime_joules"] = round(w_prime)
 
     # 6. Prepare Final JSON (compact, non-redundant, with planned workout context)
     zone_distribution = {
@@ -438,8 +451,7 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
                 {"role": "system", "content": coach_persona},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.4,
-            max_tokens=600,
+            temperature=0.5,
         )
 
         with conn.cursor() as cursor:
