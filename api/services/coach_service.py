@@ -18,10 +18,82 @@ DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_FALLBACK_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 PROMPTS_DIR = "prompts"
+COACH_PERSONA_PROMPT = f"{PROMPTS_DIR}/coach_persona.md"
 GLOBAL_REPORT_PROMPT = f"{PROMPTS_DIR}/global_report.md"
 ACTIVITY_CYCLING_PROMPT = f"{PROMPTS_DIR}/activity_cycling.md"
 ACTIVITY_RUNNING_PROMPT = f"{PROMPTS_DIR}/activity_running.md"
 DATABASE_SCHEMA = "public"
+
+_REDUNDANT_ENRICHED_KEYS = {
+    "avg_cadence_rpm",
+    "run_cadence_spm",
+    "max_run_cadence_spm",
+    "stride_length_m",
+    "steps",
+    "calories",
+    "device_normalized_power_w",
+    "device_intensity_factor",
+    "device_tss",
+    "device_ftp_w",
+    "device_lthr",
+    "device_lt_pace_ms",
+    "activity_training_load",
+}
+
+
+def _load_coach_persona() -> str:
+    """Loads the shared coach persona/skill instructions for system prompts."""
+    try:
+        with open(COACH_PERSONA_PROMPT, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if content:
+                return content
+    except Exception:
+        pass
+    return (
+        "Eres rIAcardo, entrenador de alto rendimiento en ciclismo y carrera. "
+        "Tu estilo es técnico-analítico, conciso, directo y sin relleno. "
+        "Habla siempre en español de España."
+    )
+
+
+def _compact_zones(zones: dict | None) -> dict | None:
+    """Keeps only zones with actual time/percentage to avoid prompt noise."""
+    if not isinstance(zones, dict):
+        return None
+    out = {}
+    for z, vals in zones.items():
+        if isinstance(vals, dict) and (vals.get("pct", 0) or vals.get("min", 0)):
+            out[z] = vals
+    return out or None
+
+
+def _get_planned_workout_for_date(conn, user_id: str, start_time) -> dict | None:
+    """Fetches the planned workout for the activity date, if any."""
+    if not start_time:
+        return None
+    date_str = str(start_time)[:10]
+    if len(date_str) != 10:
+        return None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT title, description, workout_type, duration_min, tss_planned "
+                f"FROM {DATABASE_SCHEMA}.planned_workouts WHERE user_id = %s AND date = %s LIMIT 1",
+                (user_id, date_str),
+            )
+            row = cursor.fetchone()
+            if isinstance(row, (tuple, list)) and len(row) >= 5 and isinstance(row[0], str):
+                return {
+                    "title": row[0],
+                    "description": row[1] or "",
+                    "type": row[2] or "",
+                    "duration_min": row[3] or 0,
+                    "tss_planned": round(float(row[4] or 0), 0),
+                }
+    except Exception:
+        pass
+    return None
 
 
 def _prune_empty(value):
@@ -218,23 +290,28 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         print(f"Error fetching training load: {e}")
         ctl, atl, tsb = 0, 0, 0
 
+    threshold_pace_str = None
+    if running and prefs.get('threshold_pace') and prefs['threshold_pace'] > 0:
+        tp_sec = 1000 / prefs['threshold_pace']
+        threshold_pace_str = f"{int(tp_sec // 60)}:{int(tp_sec % 60):02d}"
+
     athlete_context = {
         "ctl": ctl, "atl": atl, "tsb": tsb,
-        "weight_kg": prefs.get('weight', 0),
-        "ftp": prefs.get('ftp', 0) if not running else None,
-        "lthr": prefs.get('lthr', 0),
-        "threshold_pace": prefs.get('threshold_pace', 0) if running else None,
-        "athlete_profile": prefs.get('athlete_context', ''),
-        "athlete_goal": prefs.get('athlete_goal', ''),
+        "weight_kg": prefs.get('weight') or None,
+        "ftp": prefs.get('ftp') if not running else None,
+        "lthr": prefs.get('lthr') or None,
+        "threshold_pace": threshold_pace_str if running else None,
+        "athlete_goal": prefs.get('athlete_goal') or None,
     }
 
-    # 3. Load Instructions (sport-specific)
+    # 3. Load Instructions (sport-specific + coach persona)
     instructions_file = ACTIVITY_RUNNING_PROMPT if running else ACTIVITY_CYCLING_PROMPT
     try:
         with open(instructions_file, "r", encoding="utf-8") as f:
             instructions = f.read()
     except FileNotFoundError:
         return {"error": f"Instructions file not found: {instructions_file}"}
+    coach_persona = _load_coach_persona()
 
     # 4. Extract and Calculate Metrics
     duration_sec = activity.get("duration_sec", 0)
@@ -246,7 +323,8 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     avg_power = activity.get('avg_power')
     cadence = activity.get('avg_cadence')
     tss = activity.get('tss')
-    enriched = activity_data.get('enriched_context') or {}
+    enriched_raw = activity_data.get('enriched_context') or {}
+    enriched = {k: v for k, v in enriched_raw.items() if k not in _REDUNDANT_ENRICHED_KEYS}
     cardiac_drift = activity_data.get('cardiac_drift_pct')
 
     def is_valid(val):
@@ -256,14 +334,16 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         except:
             return False
 
-    # 5. Build summary_stats (sport-specific)
+    # 5. Build summary_stats (sport-specific, no redundant fields)
     dist_m = (activity.get('distance_km') or 0) * 1000
+    dur_min = round(duration_sec / 60, 1)
+    mov_min = round(moving_time / 60, 1) if moving_time else None
 
     summary_stats = {
         "name": activity.get('name') or 'Actividad',
         "sport": sport,
-        "duration_min": round(duration_sec / 60, 1),
-        "moving_time_min": round(moving_time / 60, 1) if moving_time else None,
+        "duration_min": dur_min,
+        "moving_time_min": mov_min if mov_min and mov_min != dur_min else None,
     }
 
     if is_valid(dist_m / 1000):
@@ -271,28 +351,26 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     if is_valid(activity.get('ascent_m')):
         summary_stats["ascent_m"] = round(float(activity.get('ascent_m')), 0)
 
+    if cardiac_drift is not None and not is_valid(cardiac_drift):
+        cardiac_drift = None
+
     if running:
         # Running-specific metrics
         if avg_speed_ms and avg_speed_ms > 0:
             pace_sec = 1000 / avg_speed_ms
             summary_stats["avg_pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
-            summary_stats["avg_pace_sec_per_km"] = round(pace_sec, 1)
         if cadence and cadence > 0:
             summary_stats["cadence_spm"] = round(cadence)
         if is_valid(avg_hr): summary_stats["avg_hr"] = float(avg_hr)
         if is_valid(max_hr): summary_stats["max_hr"] = float(max_hr)
         if is_valid(tss): summary_stats["tss"] = round(float(tss))
-        if prefs.get('threshold_pace'):
-            tp_sec = 1000 / prefs['threshold_pace']
-            summary_stats["threshold_pace"] = f"{int(tp_sec // 60)}:{int(tp_sec % 60):02d}"
-        if enriched.get('stride_length_m'): summary_stats["stride_length_m"] = round(float(enriched['stride_length_m']), 2)
-        if enriched.get('steps'): summary_stats["steps"] = int(enriched['steps'])
+        if is_valid(activity.get('if')): summary_stats["intensity_factor"] = float(activity.get('if'))
+        if is_valid(cardiac_drift): summary_stats["cardiac_drift_pct"] = round(float(cardiac_drift), 1)
+        if enriched_raw.get('stride_length_m'): summary_stats["stride_length_m"] = round(float(enriched_raw['stride_length_m']), 2)
     else:
         # Cycling-specific metrics
         vi = round(np_val / avg_power, 2) if np_val and avg_power and avg_power > 0 else None
         if vi is not None and np.isnan(vi): vi = None
-        if cardiac_drift is not None and np.isnan(cardiac_drift):
-            cardiac_drift = None
         w_prime = activity_data.get('w_prime_est')
         if w_prime and np.isnan(w_prime):
             w_prime = None
@@ -308,30 +386,37 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         if is_valid(max_hr): summary_stats["max_hr"] = float(max_hr)
         if w_prime: summary_stats["w_prime_joules"] = round(w_prime, 0)
 
-    # 6. Prepare Final JSON
+    # 6. Prepare Final JSON (compact, non-redundant, with planned workout context)
     zone_distribution = {
-        "power": activity_data.get('time_in_power_zones') if not running else None,
-        "hr": activity_data.get('time_in_hr_zones'),
-    }
-    zone_ranges = {
-        "power": activity_data.get('power_zone_ranges') if not running else None,
-        "hr": activity_data.get('hr_zone_ranges'),
+        "power": _compact_zones(activity_data.get('time_in_power_zones')) if not running else None,
+        "hr": _compact_zones(activity_data.get('time_in_hr_zones')),
     }
 
     laps = activity_data.get('laps') or []
-    compact_laps = [
-        {"lap": l.get('number'), "duration_min": l.get('duration_min'),
-         "distance_km": l.get('distance_km'), "avg_speed_kmh": l.get('avg_speed'),
-         "avg_hr": l.get('avg_hr')}
-        for l in laps[:20]
-    ] if len(laps) > 1 else []
+    compact_laps = []
+    if len(laps) > 1:
+        for l in laps[:20]:
+            lap_item = {
+                "lap": l.get('number'),
+                "duration_min": l.get('duration_min'),
+                "distance_km": l.get('distance_km'),
+                "avg_hr": l.get('avg_hr'),
+            }
+            spd = l.get('avg_speed')
+            if running and spd and spd > 0:
+                p_sec = 3600 / spd
+                lap_item["avg_pace"] = f"{int(p_sec // 60)}:{int(p_sec % 60):02d}"
+            elif spd:
+                lap_item["avg_speed_kmh"] = spd
+            compact_laps.append(lap_item)
+
+    planned_workout = _get_planned_workout_for_date(conn, user_id, activity.get('start_time'))
 
     input_json = {
+        "planned_workout": planned_workout,
         "summary_stats": summary_stats,
         "zone_distribution": _prune_empty(zone_distribution),
-        "zone_ranges": _prune_empty(zone_ranges),
         "athlete_context": athlete_context,
-        "cardiac_drift_pct": round(float(cardiac_drift), 1) if cardiac_drift is not None and is_valid(cardiac_drift) else None,
         "cadence_stats": activity_data.get('cadence_stats') or {},
         "best_efforts": activity_data.get('best_efforts') or {},
         "enriched_context": enriched,
@@ -350,10 +435,11 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     try:
         analysis_markdown = await _call_groq(
             messages=[
-                {"role": "system", "content": "Eres un entrenador deportivo analítico, motivador y con criterio deportivo riguroso. Habla en español de España."},
+                {"role": "system", "content": coach_persona},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5
+            temperature=0.4,
+            max_tokens=600,
         )
 
         with conn.cursor() as cursor:
@@ -488,20 +574,17 @@ async def generate_coach_report(conn, user_id: str) -> dict:
     )
 
     # 5. Call Groq
+    coach_persona = _load_coach_persona()
     try:
         full_text = await _call_groq(
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "Eres rIAcardo, un entrenador deportivo de ultra-resistencia de élite. Dominas ciclismo y running. "
-                        "Tu tono es profesional, analítico, motivador y directo. No eres un asistente, eres un COACH de alto rendimiento. "
-                        "Habla siempre en español de España. Utiliza terminología ciclista profesional (pacing, drift, TSS, CTL, sweetspot, etc.)."
-                    )
+                    "content": coach_persona
                 },
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.6,
+            temperature=0.5,
             max_tokens=3000
         )
         print(f"--- COACH DEBUG ---\n{full_text}\n--- END DEBUG ---")

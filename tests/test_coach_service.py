@@ -199,3 +199,110 @@ class TestCallGroq:
             mock_client.return_value.post = AsyncMock(side_effect=[resp_404, resp_200])
             res = asyncio.run(_call_groq([{"role": "user", "content": "hola"}]))
             assert res == "Respuesta desde fallback"
+
+
+class TestCoachHelpersAndPayload:
+    """Tests for coach persona loading, zone compaction, and non-redundant activity payload."""
+
+    def test_compact_zones_drops_empty(self):
+        from api.services.coach_service import _compact_zones
+        zones = {
+            "Z1": {"min": 12.5, "pct": 25.0},
+            "Z2": {"min": 37.5, "pct": 75.0},
+            "Z3": {"min": 0, "pct": 0},
+            "Z4": {"min": 0.0, "pct": 0.0},
+        }
+        compacted = _compact_zones(zones)
+        assert list(compacted.keys()) == ["Z1", "Z2"]
+        assert _compact_zones({"Z1": {"min": 0, "pct": 0}}) is None
+
+    def test_load_coach_persona_reads_file(self):
+        from api.services.coach_service import _load_coach_persona
+        persona = _load_coach_persona()
+        assert "rIAcardo" in persona
+        assert "NO recites la telemetría básica" in persona
+
+    @patch('api.services.coach_service._call_groq', new_callable=AsyncMock)
+    @patch('api.services.coach_service.fetch_user_preferences')
+    @patch('api.services.coach_service.get_activity_detail')
+    @patch('api.services.coach_service.get_training_load')
+    def test_running_payload_prunes_duplicates_and_includes_plan(
+        self, mock_get_load, mock_get_detail, mock_fetch_prefs, mock_call_groq
+    ):
+        from api.services.coach_service import analyze_single_activity
+        import uuid
+
+        mock_get_detail.return_value = {
+            "activity": {
+                "activity_id": 456,
+                "name": "Rodaje Z2",
+                "start_time": "2026-11-05 08:00:00",
+                "sport": "running",
+                "duration_sec": 3000,
+                "moving_time": 3000,
+                "distance_km": 10.0,
+                "avg_speed_ms": 3.3333,
+                "avg_hr": 145,
+                "max_hr": 160,
+                "avg_cadence": 174,
+                "tss": 62,
+                "if": 0.82,
+                "ascent_m": 80,
+            },
+            "records": [],
+            "time_in_hr_zones": {"Z1": {"min": 5, "pct": 10}, "Z2": {"min": 45, "pct": 90}, "Z3": {"min": 0, "pct": 0}},
+            "hr_zone_ranges": {"Z1": [0, 135], "Z2": [136, 152]},
+            "cardiac_drift_pct": 2.4,
+            "enriched_context": {
+                "temperature_avg_c": 16,
+                "run_cadence_spm": 174,
+                "stride_length_m": 1.15,
+                "steps": 8700,
+                "device_lthr": 168,
+            },
+            "laps": [
+                {"number": 1, "duration_min": 25.0, "distance_km": 5.0, "avg_speed": 12.0, "avg_hr": 143},
+                {"number": 2, "duration_min": 25.0, "distance_km": 5.0, "avg_speed": 12.0, "avg_hr": 147},
+            ],
+        }
+        mock_get_load.return_value = {"current_ctl": 55, "current_atl": 60, "current_tsb": -5}
+        mock_fetch_prefs.return_value = {
+            "lthr": 168,
+            "threshold_pace": 4.0,  # 4 m/s -> 4:10/km
+            "athlete_context": "Disponibilidad lunes a viernes...",
+            "athlete_goal": "Sub 40 en 10K",
+        }
+        mock_call_groq.return_value = "**Rodaje aeróbico bien controlado.**\n- Clave 1\n**Próxima sesión:** Descanso."
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Rodaje suave 50m", "Mantener Z2", "run", 50, 55)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        res = asyncio.run(analyze_single_activity(mock_conn, str(uuid.uuid4()), 456))
+        assert res["status"] == "ok"
+
+        sent_messages = mock_call_groq.call_args.kwargs["messages"]
+        user_prompt = sent_messages[1]["content"]
+        json_part = user_prompt.split("DATOS DE LA ACTIVIDAD (JSON):\n")[1]
+        payload = json.loads(json_part)
+
+        # Planned workout is included
+        assert payload["planned_workout"]["title"] == "Rodaje suave 50m"
+        # No duplicate keys
+        assert "zone_ranges" not in payload
+        assert "cardiac_drift_pct" not in payload  # only inside summary_stats
+        assert payload["summary_stats"]["cardiac_drift_pct"] == 2.4
+        assert "avg_pace_sec_per_km" not in payload["summary_stats"]
+        assert "moving_time_min" not in payload["summary_stats"]  # equal to duration_min
+        assert "run_cadence_spm" not in payload.get("enriched_context", {})
+        assert "device_lthr" not in payload.get("enriched_context", {})
+        assert payload["enriched_context"]["temperature_avg_c"] == 16
+        # Laps have avg_pace for running instead of avg_speed_kmh
+        assert payload["laps"][0]["avg_pace"] == "5:00"
+        assert "avg_speed_kmh" not in payload["laps"][0]
+        # Empty Z3 zone dropped
+        assert "Z3" not in payload["zone_distribution"]["hr"]
+        # Weekly availability bio omitted from single activity context
+        assert "athlete_profile" not in payload["athlete_context"]
+        assert payload["athlete_context"]["threshold_pace"] == "4:10"
