@@ -71,6 +71,124 @@ def _compact_zones(zones: dict | None) -> dict | None:
     return out or None
 
 
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _gap_effort_factor(grade: float) -> float:
+    g = max(-0.35, min(0.35, grade))
+    if g >= 0:
+        return 1.0 + 3.3 * g + 15.0 * g * g
+    return 1.0 + 1.6 * g + 11.5 * g * g
+
+
+def _compute_running_gap_and_splits(records: list, base_pace_sec: float | None = None) -> tuple[str | None, list]:
+    """
+    Computes Grade Adjusted Pace (GAP) and per-km splits (with elevation diff)
+    from activity records, correcting barometric drift on closed loops.
+    """
+    if not records:
+        return None, []
+    pts = [
+        r for r in records
+        if r.get("distance") is not None and r.get("altitude") is not None and r.get("time") is not None
+    ]
+    if len(pts) < 2:
+        return None, []
+
+    alts_raw = [float(r["altitude"]) for r in pts]
+    total_d = float(pts[-1]["distance"]) - float(pts[0]["distance"])
+    if total_d <= 0:
+        return None, []
+
+    gps_pts = [r for r in pts if r.get("lat") is not None and r.get("lng") is not None]
+    if len(gps_pts) >= 2 and total_d > 500:
+        loop_dist = _haversine_m(
+            float(gps_pts[0]["lat"]), float(gps_pts[0]["lng"]),
+            float(gps_pts[-1]["lat"]), float(gps_pts[-1]["lng"]),
+        )
+        if loop_dist < 250:
+            drift = alts_raw[-1] - alts_raw[0]
+            d0 = float(pts[0]["distance"])
+            alts_raw = [a - drift * ((float(pts[idx]["distance"]) - d0) / total_d) for idx, a in enumerate(alts_raw)]
+
+    n = len(alts_raw)
+    alts = [sum(alts_raw[max(0, i - 12):min(n, i + 13)]) / len(alts_raw[max(0, i - 12):min(n, i + 13)]) for i in range(n)]
+
+    times = []
+    for r in pts:
+        try:
+            times.append(datetime.fromisoformat(str(r["time"]).replace(" ", "T")).timestamp())
+        except Exception:
+            return None, []
+
+    k = 10
+    eq_m, tot_m, mov_s = 0.0, 0.0, 0.0
+    for i in range(n - 1):
+        seg = float(pts[i + 1]["distance"]) - float(pts[i]["distance"])
+        dt = times[i + 1] - times[i]
+        if seg <= 0 or dt <= 0 or dt > 10:
+            continue
+        h, j = max(0, i - k), min(n - 1, i + k)
+        run_m = float(pts[j]["distance"]) - float(pts[h]["distance"])
+        grade = (alts[j] - alts[h]) / run_m if run_m >= 5 else 0.0
+        eq_m += seg * _gap_effort_factor(grade)
+        tot_m += seg
+        mov_s += dt
+
+    gap_str = None
+    if eq_m > 0 and tot_m > 0 and mov_s > 0:
+        effort_ratio = eq_m / tot_m
+        ref_pace = base_pace_sec if base_pace_sec and base_pace_sec > 0 else (mov_s / (tot_m / 1000.0))
+        gap_sec = ref_pace / effort_ratio
+        gap_str = f"{int(gap_sec // 60)}:{int(gap_sec % 60):02d}"
+
+    # Build per-km splits with pace, HR and net elevation difference
+    splits = []
+    origin = float(pts[0]["distance"])
+    seg_start_idx = 0
+    seg_start_dist = origin
+    boundary = origin + 1000.0
+    hrs = []
+
+    def push_split(end_idx: int, meters: float):
+        sec = times[end_idx] - times[seg_start_idx]
+        if meters < 200 or sec <= 0:
+            return
+        pace_s = sec / (meters / 1000.0)
+        avg_hr_val = round(sum(hrs) / len(hrs)) if hrs else None
+        elev_diff = round(alts[end_idx] - alts[seg_start_idx])
+        splits.append({
+            "lap": len(splits) + 1,
+            "distance_km": round(meters / 1000.0, 2),
+            "avg_pace": f"{int(pace_s // 60)}:{int(pace_s % 60):02d}",
+            "avg_hr": avg_hr_val,
+            "elev_diff_m": elev_diff,
+        })
+
+    for idx, r in enumerate(pts):
+        d = float(r["distance"])
+        if d >= boundary:
+            push_split(idx, boundary - seg_start_dist)
+            seg_start_idx = idx
+            seg_start_dist = boundary
+            boundary += 1000.0
+            hrs = []
+        if r.get("hr"):
+            hrs.append(float(r["hr"]))
+
+    if float(pts[-1]["distance"]) - seg_start_dist >= 200:
+        push_split(n - 1, float(pts[-1]["distance"]) - seg_start_dist)
+
+    return gap_str, splits[:20]
+
+
 def _get_planned_workout_for_date(conn, user_id: str, start_time) -> dict | None:
     """Fetches the planned workout for the activity date, if any."""
     if not start_time:
@@ -367,11 +485,15 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     if cardiac_drift is not None and not is_valid(cardiac_drift):
         cardiac_drift = None
 
+    running_gap_pace, running_km_splits = (None, [])
     if running:
         # Running-specific metrics
-        if avg_speed_ms and avg_speed_ms > 0:
-            pace_sec = 1000 / avg_speed_ms
+        pace_sec = (1000 / avg_speed_ms) if (avg_speed_ms and avg_speed_ms > 0) else None
+        if pace_sec:
             summary_stats["avg_pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
+        running_gap_pace, running_km_splits = _compute_running_gap_and_splits(records, pace_sec)
+        if running_gap_pace:
+            summary_stats["gap_pace"] = running_gap_pace
         if cadence and cadence > 0:
             summary_stats["cadence_spm"] = round(cadence)
         if is_valid(avg_hr): summary_stats["avg_hr"] = round(float(avg_hr))
@@ -422,6 +544,8 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
             elif spd:
                 lap_item["avg_speed_kmh"] = spd
             compact_laps.append(lap_item)
+    elif running and len(running_km_splits) > 1:
+        compact_laps = running_km_splits
 
     planned_workout = _get_planned_workout_for_date(conn, user_id, activity.get('start_time'))
 

@@ -124,13 +124,17 @@ def start_scheduler():
     from apscheduler.triggers.date import DateTrigger
 
     hour = generation_hour()
-    _scheduler = AsyncIOScheduler()
+    _scheduler = AsyncIOScheduler(
+        job_defaults={"misfire_grace_time": 3600, "coalesce": True}
+    )
     _scheduler.add_job(
         run_due_plans,
         CronTrigger(hour=hour, minute=0),
         id="auto_plan_daily",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=3600,
+        coalesce=True,
     )
     # Catch-up: if the server was down at the scheduled hour, run soon after boot.
     _scheduler.add_job(
@@ -139,6 +143,8 @@ def start_scheduler():
         id="auto_plan_catchup",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=3600,
+        coalesce=True,
     )
     _scheduler.start()
     print(f"[SCHEDULER] Started (daily generation at {hour:02d}:00).")

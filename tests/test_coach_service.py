@@ -306,3 +306,30 @@ class TestCoachHelpersAndPayload:
         # Weekly availability bio omitted from single activity context
         assert "athlete_profile" not in payload["athlete_context"]
         assert payload["athlete_context"]["threshold_pace"] == "4:10"
+
+    def test_compute_running_gap_and_splits(self):
+        from api.services.coach_service import _compute_running_gap_and_splits
+        from datetime import datetime, timedelta
+
+        t0 = datetime(2026, 11, 5, 8, 0, 0)
+        # 2 km uphill at 5:00/km (3.333 m/s), +40 m per km (+4% grade)
+        records = []
+        for s in range(0, 601, 5):
+            dist = s * (2000.0 / 600.0)
+            alt = 10.0 + dist * 0.04
+            records.append({
+                "time": str(t0 + timedelta(seconds=s)),
+                "distance": dist,
+                "altitude": alt,
+                "hr": 150,
+                "lat": 43.31 + dist * 1e-5,
+                "lng": -8.31,
+            })
+
+        gap_pace, splits = _compute_running_gap_and_splits(records, base_pace_sec=300.0)
+        assert gap_pace is not None
+        # At +4% uphill, GAP must be significantly faster than 5:00/km (< 4:30/km)
+        m, sec = map(int, gap_pace.split(":"))
+        assert m * 60 + sec < 270
+        assert len(splits) == 2
+        assert splits[0]["elev_diff_m"] > 30

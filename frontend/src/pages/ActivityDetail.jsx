@@ -253,7 +253,7 @@ const ActivityDetail = () => {
       } : null,
       wPrimeEst: data.w_prime_est,
       paceRange,
-      gapPace: isRunning ? computeGapPace(records) : null,
+      gapPace: isRunning ? computeGapPace(records, data.activity?.avg_speed_ms ? 1000 / data.activity.avg_speed_ms : null) : null,
       bestEfforts: isRunning ? computeBestEfforts(records) : null
     };
   }, [data]);
