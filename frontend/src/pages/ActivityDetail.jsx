@@ -91,6 +91,7 @@ const ActivityDetail = () => {
   const mainChartRef = useRef(null);
   const hrChartRef = useRef(null);
   const cadenceChartRef = useRef(null);
+  const wBalChartRef = useRef(null);
   const markerRef = useRef(null);
   const mapRef = useRef(null);
   const lastSyncIndex = useRef(null);
@@ -98,9 +99,9 @@ const ActivityDetail = () => {
   // formatDuration imported from utils/format
 
   // 1. Data Processing
-  const { validRecords, path, hasMap, pathIndexByValidIndex, validIndexByPathIndex, isRunning, isStrength, elevationData, chartData, cadenceData, powerZoneData, hrZoneData, wBalData, wPrimeEst, paceRange, gapPace, bestEfforts } = useMemo(() => {
+  const { validRecords, path, hasMap, hasHrData, pathIndexByValidIndex, validIndexByPathIndex, isRunning, isStrength, elevationData, chartData, cadenceData, powerZoneData, hrZoneData, wBalData, wPrimeEst, paceRange, gapPace, bestEfforts } = useMemo(() => {
     if (!data || !data.records) {
-      return { validRecords: [], path: [], hasMap: false, pathIndexByValidIndex: [], validIndexByPathIndex: [], isRunning: false, isStrength: false, elevationData: null, chartData: null, cadenceData: null, powerZoneData: null, hrZoneData: null, wBalData: null, wPrimeEst: null, paceRange: null, gapPace: null, bestEfforts: null };
+      return { validRecords: [], path: [], hasMap: false, hasHrData: false, pathIndexByValidIndex: [], validIndexByPathIndex: [], isRunning: false, isStrength: false, elevationData: null, chartData: null, cadenceData: null, powerZoneData: null, hrZoneData: null, wBalData: null, wPrimeEst: null, paceRange: null, gapPace: null, bestEfforts: null };
     }
     const sport = (data.activity?.sport || data.sport || '').toLowerCase();
     const isRunning = sport.includes('run') || sport.includes('trail') || sport.includes('carrera');
@@ -111,9 +112,18 @@ const ActivityDetail = () => {
     );
 
     const records = data.records;
-    const valid = isStrength
-      ? records.filter(r => r.hr !== null && r.hr !== undefined)
-      : records.filter(r => r.distance !== null);
+    const validIndices = [];
+    const valid = [];
+    records.forEach((r, idx) => {
+      const keep = isStrength
+        ? (r.hr !== null && r.hr !== undefined)
+        : (r.distance !== null);
+      if (keep) {
+        valid.push(r);
+        validIndices.push(idx);
+      }
+    });
+    const hasHrData = valid.some(r => r.hr !== null && r.hr !== undefined && r.hr > 0);
     const track = [];
     const pathIndexByValidIndex = [];
     const validIndexByPathIndex = [];
@@ -141,6 +151,8 @@ const ActivityDetail = () => {
     const prepareZoneData = (zoneTimes, zoneRanges, label) => {
       if (!zoneTimes || Object.keys(zoneTimes).length === 0) return null;
       const sortedZones = Object.keys(zoneTimes).sort();
+      const totalMin = sortedZones.reduce((acc, z) => acc + (zoneTimes[z]?.min || 0), 0);
+      if (totalMin <= 0) return null;
       return {
         labels: sortedZones.map(z => {
           const range = zoneRanges?.[z];
@@ -157,9 +169,10 @@ const ActivityDetail = () => {
     };
     
     const smoothedSpeed = isRunning ? movingAverage(valid.map(r => r.speed), 30) : [];
+    const smoothedPower = (!isRunning && !isStrength) ? movingAverage(valid.map(r => r.power), 10) : [];
     const smoothedHr = isRunning
       ? movingAverage(valid.map(r => r.hr), 30)
-      : isStrength
+      : hasHrData
       ? movingAverage(valid.map(r => r.hr), 5)
       : [];
     const paces = smoothedSpeed.filter(Boolean).map(s => 60 / s).sort((a, b) => a - b);
@@ -177,10 +190,19 @@ const ActivityDetail = () => {
       return formatDurationShort(i);
     }) : [];
 
+    const rawWBal = data.w_bal_data || [];
+    const alignedWBal = rawWBal.length === records.length
+      ? validIndices.map(idx => rawWBal[idx])
+      : rawWBal;
+    const wBalLabels = alignedWBal.length === valid.length
+      ? valid.map(r => ((r.distance || 0) / 1000).toFixed(1))
+      : alignedWBal.map((_, i) => i);
+
     return { 
       validRecords: valid, 
       path: track, 
       hasMap: !isStrength && track.length > 0,
+      hasHrData,
       pathIndexByValidIndex,
       validIndexByPathIndex,
       isRunning,
@@ -266,35 +288,37 @@ const ActivityDetail = () => {
           }] : []),
         ]
       } : {
-        labels: valid.map((_, i) => i),
+        labels: valid.map(r => ((r.distance || 0) / 1000).toFixed(1)),
         datasets: [
           {
             label: 'Potencia (W)',
-            data: valid.map(r => r.power),
+            data: smoothedPower,
             borderColor: 'rgb(245, 158, 11)',
             backgroundColor: 'rgba(245, 158, 11, 0.1)',
             borderWidth: 1.5,
             pointRadius: 0,
             fill: true,
             yAxisID: 'y',
+            tension: 0.2,
           },
-          {
+          ...(hasHrData ? [{
             label: 'FC (bpm)',
-            data: valid.map(r => r.hr),
+            data: smoothedHr,
             borderColor: 'rgb(239, 68, 68)',
             borderWidth: 1.5,
             pointRadius: 0,
             yAxisID: 'y1',
-          }
+            tension: 0.2,
+          }] : []),
         ]
       },
       powerZoneData: prepareZoneData(data.time_in_power_zones, data.power_zone_ranges, 'Minutos en Zona Potencia'),
       hrZoneData: prepareZoneData(data.time_in_hr_zones, data.hr_zone_ranges, 'Minutos en Zona FC'),
-      wBalData: data.w_bal_data && data.w_bal_data.length > 0 ? {
-        labels: data.w_bal_data.map((_, i) => i),
+      wBalData: alignedWBal.length > 0 ? {
+        labels: wBalLabels,
         datasets: [{
           label: "W'bal",
-          data: data.w_bal_data,
+          data: alignedWBal,
           borderColor: 'rgba(239, 68, 68, 0.8)',
           backgroundColor: (ctx) => {
             const { chart } = ctx;
@@ -324,7 +348,7 @@ const ActivityDetail = () => {
     lastSyncIndex.current = index;
 
     // Sync Charts
-    [elevationChartRef.current, mainChartRef.current, hrChartRef.current, cadenceChartRef.current].forEach(chart => {
+    [elevationChartRef.current, mainChartRef.current, hrChartRef.current, cadenceChartRef.current, wBalChartRef.current].forEach(chart => {
       if (!chart) return;
       if (index === null) {
         chart.setActiveElements([]);
@@ -443,15 +467,26 @@ const ActivityDetail = () => {
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const val = ctx.parsed.y;
+            if (val == null) return `${ctx.dataset.label}: —`;
+            const unit = ctx.dataset.yAxisID === 'y1' ? 'bpm' : 'W';
+            return `${ctx.dataset.label}: ${Math.round(val)} ${unit}`;
+          },
+        },
+      },
     },
     scales: {
-      x: { display: false },
+      x: { display: true, ticks: { maxTicksLimit: 10 }, title: { display: true, text: 'Distancia (km)' } },
       y: { 
         type: 'linear', display: true, position: 'left', 
         reverse: isRunning,
+        ticks: { precision: 0 },
         title: { display: true, text: isRunning ? 'Ritmo (min/km)' : 'Potencia (W)' } 
       },
-      y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'FC (bpm)' } },
+      y1: { type: 'linear', display: hasHrData, position: 'right', grid: { drawOnChartArea: false }, ticks: { precision: 0 }, title: { display: true, text: 'FC (bpm)' } },
     },
   };
 
@@ -818,13 +853,16 @@ const ActivityDetail = () => {
             <span className="text-xs text-gray-400">W' estimado: {wPrimeEst ? `${(wPrimeEst/1000).toFixed(1)} kJ` : '—'}</span>
           </div>
           <div className="h-[200px]">
-            <Chart type="line" data={wBalData} options={{
-              responsive: true, maintainAspectRatio: false,
+            <Chart ref={wBalChartRef} type="line" data={wBalData} options={{
+              responsive: true, maintainAspectRatio: false, animation: false,
+              onHover: (event, elements) => {
+                syncAll(elements.length > 0 ? elements[0].index : null);
+              },
               plugins: { legend: { display: false }, tooltip: {
                 callbacks: { label: (ctx) => `${(ctx.parsed.y/1000).toFixed(2)} kJ` }
               }},
               scales: {
-                x: { display: false },
+                x: { display: true, ticks: { maxTicksLimit: 10 }, title: { display: true, text: 'Distancia (km)' } },
                 y: {
                   beginAtZero: true,
                   max: wPrimeEst || undefined,

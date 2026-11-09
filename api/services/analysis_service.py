@@ -511,22 +511,35 @@ def get_mmp_data(conn, user_id: str, months: int = 12) -> dict:
     all_time_mmp = {}
     mmp_sources = {}
     try:
-        query = f"SELECT mmp_data, activity_id, start_time, product_name FROM {DATABASE_SCHEMA}.activities WHERE user_id = %s AND mmp_data IS NOT NULL AND ignore_mmp = FALSE"
+        query = f"SELECT mmp_data, activity_id, start_time, session_data FROM {DATABASE_SCHEMA}.activities WHERE user_id = %s AND mmp_data IS NOT NULL AND ignore_mmp = FALSE"
         with conn.cursor() as cursor:
             cursor.execute(query, (user_id,))
             rows = cursor.fetchall()
             global_max = {}
             for row in rows:
                 act_mmp = row[0]
-                if isinstance(act_mmp, str): act_mmp = json.loads(act_mmp)
+                if isinstance(act_mmp, str):
+                    act_mmp = json.loads(act_mmp)
+                raw_session = row[3]
+                if isinstance(raw_session, str):
+                    try:
+                        raw_session = json.loads(raw_session)
+                    except Exception:
+                        raw_session = {}
+                act_name = (raw_session or {}).get("name") or (raw_session or {}).get("activityName") or "Actividad"
                 if isinstance(act_mmp, dict):
                     for dur_str, watts in act_mmp.items():
                         dur = int(dur_str)
                         if dur not in global_max or watts > global_max[dur]:
                             global_max[dur] = watts
-                            mmp_sources[dur] = {"activity_id": row[1], "date": row[2].strftime("%Y-%m-%d"), "name": row[3] or "Actividad"}
+                            mmp_sources[dur] = {
+                                "activity_id": row[1],
+                                "date": row[2].strftime("%Y-%m-%d") if hasattr(row[2], "strftime") else str(row[2])[:10],
+                                "name": act_name,
+                            }
             all_time_mmp = global_max
-    except: pass
+    except Exception:
+        pass
 
     if not all_time_mmp: all_time_mmp = period_mmp
     w_prime = estimate_w_prime(all_time_mmp, ftp)
@@ -619,6 +632,8 @@ def get_activity_detail(conn, user_id: str, activity_id: int) -> dict:
         if np.isnan(avg_cadence): avg_cadence = 0
 
         sport = activity['sport'].lower()
+        if row[2] is not None:
+            ftp = get_ftp_for_date(conn, user_id, row[2], ftp)
         np_val = None
         if powers:
             np_val = calculate_normalized_power(pd.Series(powers), np_rolling)
@@ -682,21 +697,34 @@ def get_activity_detail(conn, user_id: str, activity_id: int) -> dict:
         w_bal_data = []
         w_prime_est = None
         if sport in cycling_sports and powers and ftp > 0:
-            mmp_data = activity.get('mmp_data', {})
+            mmp_data = activity.get('mmp_data')
+            if isinstance(mmp_data, str):
+                try:
+                    mmp_data = json.loads(mmp_data)
+                except Exception:
+                    mmp_data = {}
+            if not mmp_data:
+                try:
+                    mmp_data = get_mmp_curve(pd.Series(powers))
+                    activity["mmp_data"] = mmp_data
+                    if mmp_data:
+                        cursor.execute(
+                            f"UPDATE {DATABASE_SCHEMA}.activities SET mmp_data = %s WHERE activity_id = %s AND user_id = %s",
+                            (json.dumps(mmp_data), activity_id, user_id),
+                        )
+                        conn.commit()
+                except Exception:
+                    mmp_data = mmp_data or {}
             try:
-                w_prime_est = estimate_w_prime(mmp_data, ftp) if mmp_data else None
+                w_prime_est = estimate_w_prime(mmp_data, ftp)
             except Exception:
-                w_prime_est = None
-            # Need full-length power arrray aligned with records
+                w_prime_est = estimate_w_prime({}, ftp)
+            # Full-length power array aligned with records
             powers_for_wbal = [r['power'] for r in records]
             try:
                 w_bal_data = calculate_w_bal(powers_for_wbal, ftp, w_prime_est)
             except Exception:
                 w_bal_data = []
-            # Downsample to ~500 points for frontend
-            if len(w_bal_data) > 500:
-                step = len(w_bal_data) // 500
-                w_bal_data = w_bal_data[::step]
 
         return {
             "activity": activity, "records": records, "laps": laps,

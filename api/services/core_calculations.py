@@ -72,7 +72,13 @@ def estimate_w_prime(mmp_data, ftp):
     Uses the 1-min and 5-min efforts to find the average above-FTP capacity.
     Falls back to a default if MMP data is insufficient or unreliable.
     """
-    if not mmp_data or ftp <= 0:
+    if isinstance(mmp_data, str):
+        import json
+        try:
+            mmp_data = json.loads(mmp_data)
+        except Exception:
+            return DEFAULT_W_PRIME
+    if not isinstance(mmp_data, dict) or not mmp_data or ftp <= 0:
         return DEFAULT_W_PRIME
 
     p1 = mmp_data.get(60) or mmp_data.get('60')
@@ -235,7 +241,7 @@ def calculate_cardiac_drift(df_activity_records, total_elapsed_time, metric_col=
             return np.nan
 
     df_clean = df.dropna(subset=[metric_col, 'heart_rate']).copy()
-    df_clean = df_clean[df_clean['heart_rate'] > 0]
+    df_clean = df_clean[(df_clean['heart_rate'] > 0) & (df_clean[metric_col] > 0)]
     if df_clean.empty or len(df_clean) < 2:
         return np.nan
 
@@ -246,8 +252,6 @@ def calculate_cardiac_drift(df_activity_records, total_elapsed_time, metric_col=
     if df_clean.empty:
         return np.nan
 
-    df_clean['metric_hr_ratio'] = df_clean[metric_col] / df_clean['heart_rate']
-
     midpoint_time = total_elapsed_time / 2
     start_ts = df_clean[ts_col].min()
 
@@ -257,8 +261,13 @@ def calculate_cardiac_drift(df_activity_records, total_elapsed_time, metric_col=
     if first_half.empty or second_half.empty:
         return np.nan
 
-    avg_1st = first_half['metric_hr_ratio'].mean()
-    avg_2nd = second_half['metric_hr_ratio'].mean()
+    hr_1st = first_half['heart_rate'].mean()
+    hr_2nd = second_half['heart_rate'].mean()
+    if hr_1st <= 0 or hr_2nd <= 0 or np.isnan(hr_1st) or np.isnan(hr_2nd):
+        return np.nan
+
+    avg_1st = first_half[metric_col].mean() / hr_1st
+    avg_2nd = second_half[metric_col].mean() / hr_2nd
 
     if avg_1st == 0 or np.isnan(avg_1st) or np.isnan(avg_2nd):
         return np.nan

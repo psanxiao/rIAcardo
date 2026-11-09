@@ -299,6 +299,14 @@ def insert_records_from_fit(conn, user_id, activity_id, fit_zip_bytes):
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, records)
             conn.commit()
+            powers = [r[10] for r in records if r[10] is not None]
+            if powers:
+                try:
+                    mmp = get_mmp_curve(pd.Series(powers))
+                    if mmp:
+                        update_activity_mmp(conn, activity_id, mmp)
+                except Exception as mmp_err:
+                    print(f"[WORKER] MMP calculation error: {mmp_err}")
             print(f"[WORKER] Inserted {len(records)} records from FIT file")
         else:
             print(f"[WORKER] No records found in FIT file")

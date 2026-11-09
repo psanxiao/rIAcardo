@@ -108,6 +108,11 @@ class TestEstimateWPrime:
         w_prime = estimate_w_prime({60: 300}, 0)
         assert w_prime == 20000
 
+    def test_json_string_mmp(self):
+        """W' should accept JSON string mmp_data."""
+        w_prime = estimate_w_prime('{"60": 300, "300": 250}', 200)
+        assert 1000 < w_prime < 50000
+
 
 class TestCardiacDrift:
     def test_no_drift(self):
@@ -119,6 +124,17 @@ class TestCardiacDrift:
         })
         drift = calculate_cardiac_drift(df, 100)
         assert abs(drift) < 5
+
+    def test_coasting_zeros_do_not_skew_drift(self):
+        """Zero-power coasting records should be excluded so they do not skew drift."""
+        # First half has coasting (0W), second half is steady 200W at same 150 bpm
+        df = pd.DataFrame({
+            'power': [200] * 40 + [0] * 10 + [200] * 50,
+            'hr': [150] * 100,
+            'time': pd.date_range('2026-01-01', periods=100, freq='s')
+        })
+        drift = calculate_cardiac_drift(df, 100)
+        assert abs(drift) < 0.1
 
     def test_insufficient_data(self):
         """Should return NaN with missing columns."""
