@@ -90,9 +90,13 @@ def estimate_w_prime(mmp_data, ftp):
     w1 = max(0, (p1 - ftp)) * 60
     w2 = max(0, (p2 - ftp)) * 300
 
-    estimated_w = (w1 + w2) / 2
-    # If both efforts are below FTP (endurance ride), use default
-    if estimated_w < 2000:
+    candidates = [w for w in (w1, w2) if w > 0]
+    if not candidates:
+        return DEFAULT_W_PRIME
+
+    estimated_w = sum(candidates) / len(candidates)
+    # If the effort was sub-maximal (< 8 kJ above FTP), fall back to default W'
+    if estimated_w < 8000:
         return DEFAULT_W_PRIME
     return int(estimated_w)
 
