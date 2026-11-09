@@ -22,6 +22,7 @@ COACH_PERSONA_PROMPT = f"{PROMPTS_DIR}/coach_persona.md"
 GLOBAL_REPORT_PROMPT = f"{PROMPTS_DIR}/global_report.md"
 ACTIVITY_CYCLING_PROMPT = f"{PROMPTS_DIR}/activity_cycling.md"
 ACTIVITY_RUNNING_PROMPT = f"{PROMPTS_DIR}/activity_running.md"
+ACTIVITY_STRENGTH_PROMPT = f"{PROMPTS_DIR}/activity_strength.md"
 DATABASE_SCHEMA = "public"
 
 _REDUNDANT_ENRICHED_KEYS = {
@@ -386,6 +387,12 @@ def is_cycling_sport(sport: str) -> bool:
     s = sport.lower()
     return s in CYCLING_SPORTS or 'cycl' in s or 'bike' in s or 'ride' in s or 'virtual' in s
 
+def is_strength_sport(sport: str) -> bool:
+    if not sport: return False
+    s = sport.lower()
+    return ('strength' in s or 'fitness' in s or 'gym' in s or 'fuerza' in s
+            or 'weight' in s or 'crossfit' in s or 'functional' in s or 'hiit' in s)
+
 async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     """
     Generates an AI analysis for a specific activity.
@@ -404,6 +411,7 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     records = activity_data.get('records', [])
     sport = activity.get('sport', '')
     running = is_running_sport(sport)
+    strength = is_strength_sport(sport)
 
     # 2. Fetch Athlete Context (full profile)
     prefs = fetch_user_preferences(conn, user_id)
@@ -427,14 +435,19 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     athlete_context = {
         "ctl": round(ctl), "atl": round(atl), "tsb": round(tsb),
         "weight_kg": round(float(prefs['weight'])) if prefs.get('weight') else None,
-        "ftp": prefs.get('ftp') if not running else None,
+        "ftp": prefs.get('ftp') if (not running and not strength) else None,
         "lthr": prefs.get('lthr') or None,
         "threshold_pace": threshold_pace_str if running else None,
         "athlete_goal": prefs.get('athlete_goal') or None,
     }
 
     # 3. Load Instructions (sport-specific + coach persona)
-    instructions_file = ACTIVITY_RUNNING_PROMPT if running else ACTIVITY_CYCLING_PROMPT
+    if running:
+        instructions_file = ACTIVITY_RUNNING_PROMPT
+    elif strength:
+        instructions_file = ACTIVITY_STRENGTH_PROMPT
+    else:
+        instructions_file = ACTIVITY_CYCLING_PROMPT
     try:
         with open(instructions_file, "r", encoding="utf-8") as f:
             instructions = f.read()
@@ -448,6 +461,7 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
     avg_speed_ms = activity.get("avg_speed_ms", 0)
     avg_hr = activity.get('avg_hr')
     max_hr = activity.get('max_hr')
+    min_hr = activity.get('min_hr')
     np_val = activity.get('np')
     avg_power = activity.get('avg_power')
     cadence = activity.get('avg_cadence')
@@ -477,10 +491,11 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         "moving_time_min": mov_min if mov_min and abs(mov_min - dur_min) > 1 else None,
     }
 
-    if is_valid(dist_m / 1000):
-        summary_stats["distance_km"] = round(dist_m / 1000, 1)
-    if is_valid(activity.get('ascent_m')):
-        summary_stats["ascent_m"] = round(float(activity.get('ascent_m')))
+    if not strength:
+        if is_valid(dist_m / 1000):
+            summary_stats["distance_km"] = round(dist_m / 1000, 1)
+        if is_valid(activity.get('ascent_m')):
+            summary_stats["ascent_m"] = round(float(activity.get('ascent_m')))
 
     if cardiac_drift is not None and not is_valid(cardiac_drift):
         cardiac_drift = None
@@ -502,6 +517,25 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         if is_valid(activity.get('if')): summary_stats["intensity_factor"] = float(activity.get('if'))
         if is_valid(cardiac_drift): summary_stats["cardiac_drift_pct"] = round(float(cardiac_drift), 1)
         if enriched_raw.get('stride_length_m'): summary_stats["stride_length_m"] = round(float(enriched_raw['stride_length_m']), 2)
+    elif strength:
+        # Strength-specific metrics
+        if is_valid(avg_hr): summary_stats["avg_hr"] = round(float(avg_hr))
+        if is_valid(max_hr): summary_stats["max_hr"] = round(float(max_hr))
+        eff_min_hr = min_hr if is_valid(min_hr) else enriched_raw.get("min_hr")
+        if is_valid(eff_min_hr): summary_stats["min_hr"] = round(float(eff_min_hr))
+        if is_valid(tss): summary_stats["tss"] = round(float(tss))
+        cal = activity.get("calories") or enriched_raw.get("calories")
+        if is_valid(cal) and float(cal) > 0: summary_stats["calories_kcal"] = round(float(cal))
+        aer_te = enriched_raw.get("aerobic_training_effect")
+        if aer_te is None:
+            aer_te = enriched_raw.get("training_effect")
+        if is_valid(aer_te): summary_stats["aerobic_training_effect"] = round(float(aer_te), 1)
+        anaer_te = enriched_raw.get("anaerobic_training_effect")
+        if is_valid(anaer_te): summary_stats["anaerobic_training_effect"] = round(float(anaer_te), 1)
+        if is_valid(enriched_raw.get("moderate_intensity_min")):
+            summary_stats["moderate_intensity_min"] = int(round(float(enriched_raw["moderate_intensity_min"])))
+        if is_valid(enriched_raw.get("vigorous_intensity_min")):
+            summary_stats["vigorous_intensity_min"] = int(round(float(enriched_raw["vigorous_intensity_min"])))
     else:
         # Cycling-specific metrics
         vi = round(np_val / avg_power, 2) if np_val and avg_power and avg_power > 0 else None
@@ -523,13 +557,13 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
 
     # 6. Prepare Final JSON (compact, non-redundant, with planned workout context)
     zone_distribution = {
-        "power": _compact_zones(activity_data.get('time_in_power_zones')) if not running else None,
+        "power": _compact_zones(activity_data.get('time_in_power_zones')) if (not running and not strength) else None,
         "hr": _compact_zones(activity_data.get('time_in_hr_zones')),
     }
 
     laps = activity_data.get('laps') or []
     compact_laps = []
-    if len(laps) > 1:
+    if not strength and len(laps) > 1:
         for l in laps[:20]:
             lap_item = {
                 "lap": l.get('number'),
@@ -554,8 +588,8 @@ async def analyze_single_activity(conn, user_id: str, activity_id: int) -> dict:
         "summary_stats": summary_stats,
         "zone_distribution": _prune_empty(zone_distribution),
         "athlete_context": athlete_context,
-        "cadence_stats": activity_data.get('cadence_stats') or {},
-        "best_efforts": activity_data.get('best_efforts') or {},
+        "cadence_stats": (activity_data.get('cadence_stats') or {}) if not strength else {},
+        "best_efforts": (activity_data.get('best_efforts') or {}) if not strength else {},
         "enriched_context": enriched,
         "laps": compact_laps,
     }

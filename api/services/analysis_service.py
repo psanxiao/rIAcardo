@@ -54,6 +54,14 @@ def _is_cycling_sport(sport) -> bool:
             or 'cycl' in s or 'bike' in s or 'ride' in s or 'virtual' in s)
 
 
+def _is_strength_sport(sport) -> bool:
+    if not sport:
+        return False
+    s = str(sport).lower()
+    return ('strength' in s or 'fitness' in s or 'gym' in s or 'fuerza' in s
+            or 'weight' in s or 'crossfit' in s or 'functional' in s or 'hiit' in s)
+
+
 # Curated Garmin session_data fields worth sending to the model.
 _ENRICHED_COMMON = {
     "temperature_avg_c": "averageTemperature",
@@ -66,6 +74,15 @@ _ENRICHED_COMMON = {
     "anaerobic_training_effect": "anaerobicTrainingEffect",
     "respiration_avg": "avgRespirationRate",
     "respiration_max": "maxRespirationRate",
+}
+
+_ENRICHED_STRENGTH = {
+    "min_hr": "minHR",
+    "moderate_intensity_min": "moderateIntensityMinutes",
+    "vigorous_intensity_min": "vigorousIntensityMinutes",
+    "active_sets": "activeSets",
+    "total_sets": "totalSets",
+    "total_reps": "totalExerciseReps",
 }
 
 _ENRICHED_CYCLING = {
@@ -106,6 +123,11 @@ _ENRICHED_RUNNING = {
 
 def _build_enriched_context(session_data, sport) -> dict:
     """Extracts a curated set of Garmin session fields (only those present)."""
+    if isinstance(session_data, str):
+        try:
+            session_data = json.loads(session_data)
+        except Exception:
+            return {}
     if not isinstance(session_data, dict):
         return {}
     mapping = dict(_ENRICHED_COMMON)
@@ -113,6 +135,8 @@ def _build_enriched_context(session_data, sport) -> dict:
         mapping.update(_ENRICHED_RUNNING)
     elif _is_cycling_sport(sport):
         mapping.update(_ENRICHED_CYCLING)
+    elif _is_strength_sport(sport):
+        mapping.update(_ENRICHED_STRENGTH)
 
     out = {}
     for out_key, src_key in mapping.items():
@@ -559,6 +583,7 @@ def get_activity_detail(conn, user_id: str, activity_id: int) -> dict:
                 raw = json.loads(raw)
             except Exception:
                 raw = {}
+        activity["raw_data"] = raw
         activity["name"] = (raw or {}).get('name') or (raw or {}).get('activityName') or f"Actividad {activity['sport']}"
 
         # Recalculate avg_speed from distance / moving_time (Garmin avg_speed uses elapsed time)
@@ -626,6 +651,8 @@ def get_activity_detail(conn, user_id: str, activity_id: int) -> dict:
         activity["tss"] = round(float(tss), 1) if tss and not np.isnan(tss) else 0
         activity["avg_power"] = round(avg_power, 0)
         activity["avg_cadence"] = round(avg_cadence, 0)
+        min_hr = min(hrs) if hrs else (raw or {}).get("minHR")
+        activity["min_hr"] = round(float(min_hr)) if min_hr is not None and not np.isnan(float(min_hr)) else None
 
         # Zones (use user preferences or default zones as fallback)
         power_zones_raw = prefs.get('power_zones')

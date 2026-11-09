@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { formatDuration, formatDistance, formatSpeedKmh, formatPace, formatWatts, formatBpm, formatIF } from '../utils/format';
+import { formatDuration, formatDurationShort, formatDistance, formatSpeedKmh, formatPace, formatWatts, formatBpm, formatIF } from '../utils/format';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -43,7 +43,10 @@ import {
   Sparkles,
   RefreshCw,
   Trophy,
-  Footprints
+  Footprints,
+  Dumbbell,
+  Heart,
+  Flame
 } from 'lucide-react';
 
 ChartJS.register(
@@ -95,22 +98,34 @@ const ActivityDetail = () => {
   // formatDuration imported from utils/format
 
   // 1. Data Processing
-  const { validRecords, path, hasMap, pathIndexByValidIndex, validIndexByPathIndex, isRunning, elevationData, chartData, cadenceData, powerZoneData, hrZoneData, wBalData, wPrimeEst, paceRange, gapPace, bestEfforts } = useMemo(() => {
+  const { validRecords, path, hasMap, pathIndexByValidIndex, validIndexByPathIndex, isRunning, isStrength, elevationData, chartData, cadenceData, powerZoneData, hrZoneData, wBalData, wPrimeEst, paceRange, gapPace, bestEfforts } = useMemo(() => {
     if (!data || !data.records) {
-      return { validRecords: [], path: [], hasMap: false, pathIndexByValidIndex: [], validIndexByPathIndex: [], isRunning: false, elevationData: null, chartData: null, cadenceData: null, powerZoneData: null, hrZoneData: null, wBalData: null, wPrimeEst: null, paceRange: null, gapPace: null, bestEfforts: null };
+      return { validRecords: [], path: [], hasMap: false, pathIndexByValidIndex: [], validIndexByPathIndex: [], isRunning: false, isStrength: false, elevationData: null, chartData: null, cadenceData: null, powerZoneData: null, hrZoneData: null, wBalData: null, wPrimeEst: null, paceRange: null, gapPace: null, bestEfforts: null };
     }
+    const sport = (data.activity?.sport || data.sport || '').toLowerCase();
+    const isRunning = sport.includes('run') || sport.includes('trail') || sport.includes('carrera');
+    const isStrength = (
+      sport.includes('strength') || sport.includes('fitness') || sport.includes('gym') ||
+      sport.includes('fuerza') || sport.includes('weight') || sport.includes('crossfit') ||
+      sport.includes('functional') || sport.includes('hiit')
+    );
+
     const records = data.records;
-    const valid = records.filter(r => r.distance !== null);
+    const valid = isStrength
+      ? records.filter(r => r.hr !== null && r.hr !== undefined)
+      : records.filter(r => r.distance !== null);
     const track = [];
     const pathIndexByValidIndex = [];
     const validIndexByPathIndex = [];
-    valid.forEach((r, i) => {
-      if (r.lat !== null && r.lng !== null) {
-        pathIndexByValidIndex[i] = track.length;
-        validIndexByPathIndex[track.length] = i;
-        track.push([r.lat, r.lng]);
-      }
-    });
+    if (!isStrength) {
+      valid.forEach((r, i) => {
+        if (r.lat !== null && r.lng !== null) {
+          pathIndexByValidIndex[i] = track.length;
+          validIndexByPathIndex[track.length] = i;
+          track.push([r.lat, r.lng]);
+        }
+      });
+    }
 
     // Zone colors
     const zoneColors = [
@@ -141,25 +156,37 @@ const ActivityDetail = () => {
       };
     };
     
-    const sport = (data.activity?.sport || data.sport || '').toLowerCase();
-    const isRunning = sport.includes('run');
     const smoothedSpeed = isRunning ? movingAverage(valid.map(r => r.speed), 30) : [];
-    const smoothedHr = isRunning ? movingAverage(valid.map(r => r.hr), 30) : [];
+    const smoothedHr = isRunning
+      ? movingAverage(valid.map(r => r.hr), 30)
+      : isStrength
+      ? movingAverage(valid.map(r => r.hr), 5)
+      : [];
     const paces = smoothedSpeed.filter(Boolean).map(s => 60 / s).sort((a, b) => a - b);
     const paceRange = paces.length ? {
       min: paces[Math.floor(paces.length * 0.02)] - 0.3,
       max: paces[Math.min(paces.length - 1, Math.ceil(paces.length * 0.98))] + 0.3,
     } : null;
 
+    const t0 = valid.length > 0 && valid[0].time ? new Date(valid[0].time).getTime() : null;
+    const strengthTimeLabels = isStrength ? valid.map((r, i) => {
+      if (t0 && r.time) {
+        const dt = Math.max(0, Math.round((new Date(r.time).getTime() - t0) / 1000));
+        return formatDurationShort(Number.isFinite(dt) ? dt : i);
+      }
+      return formatDurationShort(i);
+    }) : [];
+
     return { 
       validRecords: valid, 
       path: track, 
-      hasMap: track.length > 0,
+      hasMap: !isStrength && track.length > 0,
       pathIndexByValidIndex,
       validIndexByPathIndex,
       isRunning,
-      elevationData: {
-        labels: valid.map(r => (r.distance / 1000).toFixed(1)),
+      isStrength,
+      elevationData: isStrength ? null : {
+        labels: valid.map(r => ((r.distance || 0) / 1000).toFixed(1)),
         datasets: [{
           label: 'Altitud (m)',
           data: valid.map(r => r.altitude),
@@ -172,7 +199,7 @@ const ActivityDetail = () => {
         }]
       },
       cadenceData: isRunning ? {
-        labels: valid.map(r => (r.distance / 1000).toFixed(2)),
+        labels: valid.map(r => ((r.distance || 0) / 1000).toFixed(2)),
         datasets: [{
           label: 'Cadencia (spm)',
           data: movingAverage(valid.map(r => r.cadence), 30),
@@ -183,7 +210,7 @@ const ActivityDetail = () => {
         }]
       } : null,
       chartData: isRunning ? {
-        labels: valid.map(r => (r.distance / 1000).toFixed(2)),
+        labels: valid.map(r => ((r.distance || 0) / 1000).toFixed(2)),
         datasets: [
           {
             label: 'Ritmo (min/km)',
@@ -204,6 +231,39 @@ const ActivityDetail = () => {
             yAxisID: 'y1',
             tension: 0.3,
           }
+        ]
+      } : isStrength ? {
+        labels: strengthTimeLabels,
+        datasets: [
+          {
+            label: 'FC (bpm)',
+            data: smoothedHr,
+            borderColor: 'rgb(239, 68, 68)',
+            backgroundColor: (ctx) => {
+              const { chart } = ctx;
+              const { ctx: c, chartArea } = chart;
+              if (!chartArea) return 'rgba(239, 68, 68, 0.12)';
+              const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, 'rgba(239, 68, 68, 0.28)');
+              gradient.addColorStop(1, 'rgba(239, 68, 68, 0.02)');
+              return gradient;
+            },
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: true,
+            yAxisID: 'y',
+            tension: 0.25,
+          },
+          ...(data.activity?.avg_hr ? [{
+            label: `FC Media (${Math.round(data.activity.avg_hr)} bpm)`,
+            data: valid.map(() => Math.round(data.activity.avg_hr)),
+            borderColor: 'rgba(156, 163, 175, 0.7)',
+            borderDash: [6, 4],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false,
+            yAxisID: 'y',
+          }] : []),
         ]
       } : {
         labels: valid.map((_, i) => i),
@@ -421,6 +481,38 @@ const ActivityDetail = () => {
     },
   });
 
+  const strengthChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    onHover: (event, elements) => {
+      syncAll(elements.length > 0 ? elements[0].index : null);
+    },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: ${Math.round(ctx.parsed.y)} bpm`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        display: true,
+        ticks: { maxTicksLimit: 12 },
+        title: { display: true, text: 'Tiempo de sesión (mm:ss)' },
+      },
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        ticks: { precision: 0 },
+        title: { display: true, text: 'FC (bpm)' },
+      },
+    },
+  };
+
   const pacePanelOptions = runningPanelOptions({
     reverse: true,
     min: paceRange?.min,
@@ -473,6 +565,15 @@ const ActivityDetail = () => {
     ],
   };
 
+  const recordHrs = validRecords.map(r => r.hr).filter(h => h != null && h > 0);
+  const minHr = activity.min_hr ?? garminCtx.min_hr ?? (recordHrs.length > 0 ? Math.min(...recordHrs) : null);
+  const calories = activity.calories || garminCtx.calories || 0;
+  const aerobicTe = garminCtx.aerobic_training_effect ?? garminCtx.training_effect;
+  const anaerobicTe = garminCtx.anaerobic_training_effect;
+  const hrZonesObj = data.time_in_hr_zones || {};
+  const z3PlusMin = ['Z3', 'Z4', 'Z5', 'Z6', 'Z7'].reduce((acc, z) => acc + (hrZonesObj[z]?.min || 0), 0);
+  const z3PlusPct = ['Z3', 'Z4', 'Z5', 'Z6', 'Z7'].reduce((acc, z) => acc + (hrZonesObj[z]?.pct || 0), 0);
+
   const summaryGroups = isRunning ? [
     volumeGroup,
     {
@@ -491,6 +592,44 @@ const ActivityDetail = () => {
       rows: [
         ['IF', formatIF(activity.if)],
         ['TSS', Math.round(activity.tss || 0)],
+      ],
+    },
+  ] : isStrength ? [
+    {
+      title: 'Sesión',
+      icon: Dumbbell,
+      rows: [
+        ['Duración', formatDuration(activity.duration_sec)],
+        ...(calories > 0 ? [['Calorías', `${Math.round(calories)} kcal`]] : []),
+        ...(garminCtx.moderate_intensity_min != null
+          ? [['Int. Moderada', `${Math.round(garminCtx.moderate_intensity_min)} min`]]
+          : []),
+        ...(garminCtx.vigorous_intensity_min != null
+          ? [['Int. Vigorosa', `${Math.round(garminCtx.vigorous_intensity_min)} min`]]
+          : []),
+        ...pickGarmin(['Temp. media']),
+      ],
+    },
+    {
+      title: 'Respuesta Cardíaca',
+      icon: Heart,
+      rows: [
+        ['FC Media', `${formatBpm(activity.avg_hr)} bpm`],
+        ['FC Máxima', `${formatBpm(activity.max_hr)} bpm`],
+        ...(minHr != null ? [['FC Mínima', `${formatBpm(minHr)} bpm`]] : []),
+        ...(minHr != null && activity.max_hr
+          ? [['Amplitud (Δ FC)', `${Math.round(activity.max_hr - minHr)} bpm`]]
+          : []),
+      ],
+    },
+    {
+      title: 'Carga y Estímulo',
+      icon: Flame,
+      rows: [
+        ['Carga (hrTSS)', Math.round(activity.tss || 0)],
+        ...(aerobicTe != null ? [['Efecto Aeróbico', `${Number(aerobicTe).toFixed(1)} / 5.0`]] : []),
+        ...(anaerobicTe != null ? [['Efecto Anaeróbico', `${Number(anaerobicTe).toFixed(1)} / 5.0`]] : []),
+        ...(z3PlusMin > 0 ? [['Tiempo en Z3+', `${z3PlusMin.toFixed(1)} min (${Math.round(z3PlusPct)}%)`]] : []),
       ],
     },
   ] : [
@@ -530,7 +669,7 @@ const ActivityDetail = () => {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white capitalize">
                 {activity.raw_data?.name || activity.name || `Actividad ${activity.sport}`}
               </h1>
-              {ignoringMmp && (
+              {!isStrength && ignoringMmp && (
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded uppercase tracking-wider">
                   Excluida de MMP
                 </span>
@@ -571,22 +710,24 @@ const ActivityDetail = () => {
             )}
           </button>
 
-          <button
-            onClick={handleToggleIgnoreMmp}
-            disabled={isUpdating}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${
-              ignoringMmp 
-                ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800' 
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Zap className={`h-4 w-4 ${ignoringMmp ? 'fill-current' : ''}`} />
-            {isUpdating ? '...' : ignoringMmp ? 'Incluir' : 'Excluir'}
-          </button>
+          {!isStrength && (
+            <button
+              onClick={handleToggleIgnoreMmp}
+              disabled={isUpdating}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${
+                ignoringMmp 
+                  ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800' 
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Zap className={`h-4 w-4 ${ignoringMmp ? 'fill-current' : ''}`} />
+              {isUpdating ? '...' : ignoringMmp ? 'Incluir' : 'Excluir'}
+            </button>
+          )}
         </div>
       </div>
 
-      {ignoringMmp && (
+      {!isStrength && ignoringMmp && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-start gap-3 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400">
           <Zap className="h-5 w-5 mt-0.5 flex-shrink-0" />
           <p className="text-sm">
@@ -630,7 +771,7 @@ const ActivityDetail = () => {
         </div>
       )}
 
-      {validRecords.length > 0 && (
+      {!isStrength && validRecords.length > 0 && elevationData && (
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase mb-4 text-center">Perfil de Altimetría</h3>
           <div className="h-[200px]"><Chart ref={elevationChartRef} type="line" data={elevationData} options={elevationOptions} /></div>
@@ -648,6 +789,17 @@ const ActivityDetail = () => {
             <div className="h-[150px]"><Chart ref={cadenceChartRef} type="line" data={cadenceData} options={cadencePanelOptions} /></div>
           </div>
         </SectionCard>
+      ) : isStrength ? (
+        validRecords.length > 0 && (
+          <SectionCard
+            title="Evolución de Frecuencia Cardíaca"
+            subtitle={minHr != null && activity.max_hr ? `Mín ${Math.round(minHr)} · Media ${Math.round(activity.avg_hr || 0)} · Máx ${Math.round(activity.max_hr)} bpm` : null}
+          >
+            <div className="p-4 sm:p-6">
+              <div className="h-[320px]"><Chart ref={mainChartRef} type="line" data={chartData} options={strengthChartOptions} /></div>
+            </div>
+          </SectionCard>
+        )
       ) : (
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="h-[400px]"><Chart ref={mainChartRef} type="line" data={chartData} options={chartOptions} /></div>
@@ -659,7 +811,7 @@ const ActivityDetail = () => {
 
 
       {/* W'bal Chart */}
-      {wBalData && (
+      {!isStrength && wBalData && (
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase">W'bal (Reserva Anaeróbica)</h3>
@@ -689,15 +841,15 @@ const ActivityDetail = () => {
 
       {/* Time in Zones Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {!isRunning && (
+        {!isRunning && !isStrength && (
           <ZoneTimeChart zoneData={powerZoneData} title="Tiempo en Zonas de Potencia" emptyMessage="Datos de potencia no disponibles" />
         )}
-        <div className={isRunning ? 'lg:col-span-2' : ''}>
+        <div className={(isRunning || isStrength) ? 'lg:col-span-2' : ''}>
           <ZoneTimeChart zoneData={hrZoneData} title="Tiempo en Zonas de FC" emptyMessage="Datos de FC no disponibles" />
         </div>
       </div>
 
-      <LapsTable laps={laps} isRunning={isRunning} />
+      {!isStrength && <LapsTable laps={laps} isRunning={isRunning} />}
     </div>
   );
 };

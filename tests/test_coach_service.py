@@ -333,3 +333,81 @@ class TestCoachHelpersAndPayload:
         assert m * 60 + sec < 270
         assert len(splits) == 2
         assert splits[0]["elev_diff_m"] > 30
+
+    @patch("api.services.coach_service._call_groq", new_callable=AsyncMock)
+    @patch("api.services.coach_service.get_training_load")
+    @patch("api.services.coach_service.fetch_user_preferences")
+    @patch("api.services.coach_service.get_activity_detail")
+    def test_analyze_strength_activity_payload(
+        self, mock_get_detail, mock_fetch_prefs, mock_get_load, mock_call_groq, monkeypatch
+    ):
+        import uuid
+        from api.services.coach_service import analyze_single_activity
+        monkeypatch.setenv("GROQ_API_KEY", "test-key")
+        mock_get_detail.return_value = {
+            "activity": {
+                "name": "Fuerza",
+                "sport": "strength_training",
+                "start_time": "2026-11-09 18:00:00",
+                "duration_sec": 3558,
+                "moving_time": 3558,
+                "distance_km": 0.0,
+                "ascent_m": 0,
+                "calories": 351,
+                "avg_hr": 101,
+                "max_hr": 166,
+                "min_hr": 71,
+                "tss": 36,
+            },
+            "records": [{"time": "2026-11-09 18:00:00", "hr": 101}],
+            "time_in_power_zones": {"Z1": {"min": 0.0, "pct": 0.0}},
+            "time_in_hr_zones": {
+                "Z1": {"min": 42.0, "pct": 70.0},
+                "Z2": {"min": 12.0, "pct": 20.0},
+                "Z3": {"min": 6.0, "pct": 10.0},
+            },
+            "enriched_context": {
+                "training_effect": 1.1,
+                "anaerobic_training_effect": 0.7,
+                "moderate_intensity_min": 38,
+                "vigorous_intensity_min": 19,
+                "temperature_avg_c": 24.0,
+            },
+            "laps": [],
+        }
+        mock_get_load.return_value = {"current_ctl": 31, "current_atl": 37, "current_tsb": -6}
+        mock_fetch_prefs.return_value = {
+            "ftp": 230,
+            "lthr": 166,
+            "athlete_goal": "Ultra 500 km en mayo",
+        }
+        mock_call_groq.return_value = "Buena sesión de fuerza.\n\n**Próxima sesión:** Rodaje suave."
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = ("Strength Training", "60-minute class", "strength", 60, 50)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        res = asyncio.run(analyze_single_activity(mock_conn, str(uuid.uuid4()), 1260))
+        assert res["status"] == "ok"
+
+        sent_messages = mock_call_groq.call_args.kwargs["messages"]
+        user_prompt = sent_messages[1]["content"]
+        assert "Sesión de Fuerza / Gimnasio" in user_prompt
+        json_part = user_prompt.split("DATOS DE LA ACTIVIDAD (JSON):\n")[1]
+        payload = json.loads(json_part)
+
+        stats = payload["summary_stats"]
+        assert "distance_km" not in stats
+        assert "ascent_m" not in stats
+        assert "avg_power" not in stats
+        assert stats["avg_hr"] == 101
+        assert stats["max_hr"] == 166
+        assert stats["min_hr"] == 71
+        assert stats["calories_kcal"] == 351
+        assert stats["aerobic_training_effect"] == 1.1
+        assert stats["anaerobic_training_effect"] == 0.7
+        assert stats["moderate_intensity_min"] == 38
+        assert stats["vigorous_intensity_min"] == 19
+        assert "power" not in payload["zone_distribution"]
+        assert "ftp" not in payload["athlete_context"]

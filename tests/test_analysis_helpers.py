@@ -1,6 +1,7 @@
 from api.services.analysis_service import (
     _is_running_sport,
     _is_cycling_sport,
+    _is_strength_sport,
     _build_enriched_context,
     _cadence_stats,
     _best_efforts,
@@ -21,8 +22,31 @@ class TestSportDetection:
         assert _is_cycling_sport("gravel_cycling")
         assert not _is_cycling_sport("running")
 
+    def test_strength(self):
+        assert _is_strength_sport("strength_training")
+        assert _is_strength_sport("fitness_equipment")
+        assert not _is_strength_sport("running")
+        assert not _is_strength_sport("cycling")
+
 
 class TestEnrichedContext:
+    def test_strength_fields_and_json_string(self):
+        import json
+        session = json.dumps({
+            "minHR": 71.0,
+            "calories": 351.0,
+            "trainingEffect": 1.1,
+            "anaerobicTrainingEffect": 0.7,
+            "moderateIntensityMinutes": 38,
+            "vigorousIntensityMinutes": 19,
+            "averageTemperature": 24.0,
+        })
+        out = _build_enriched_context(session, "strength_training")
+        assert out["min_hr"] == 71.0
+        assert out["moderate_intensity_min"] == 38
+        assert out["vigorous_intensity_min"] == 19
+        assert out["training_effect"] == 1.1
+        assert out["anaerobic_training_effect"] == 0.7
     def test_running_fields(self):
         session = {
             "averageRunCadence": 164.3, "maxRunCadence": 213, "steps": 12188,
