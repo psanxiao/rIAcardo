@@ -150,16 +150,18 @@ def _compute_running_gap_and_splits(records: list, base_pace_sec: float | None =
         gap_sec = ref_pace / effort_ratio
         gap_str = f"{int(gap_sec // 60)}:{int(gap_sec % 60):02d}"
 
-    # Build per-km splits with pace, HR and net elevation difference
+    # Build per-km splits with moving pace (excluding pauses), HR and net elevation difference
+    has_speed_stream = any(r.get("speed") is not None and float(r.get("speed") or 0) > 0 for r in pts)
     splits = []
     origin = float(pts[0]["distance"])
     seg_start_idx = 0
-    seg_start_dist = origin
     boundary = origin + 1000.0
+    split_m = 0.0
+    split_s = 0.0
     hrs = []
+    prev_idx = 0
 
-    def push_split(end_idx: int, meters: float):
-        sec = times[end_idx] - times[seg_start_idx]
+    def push_split(end_idx: int, meters: float, sec: float):
         if meters < 200 or sec <= 0:
             return
         pace_s = sec / (meters / 1000.0)
@@ -173,19 +175,57 @@ def _compute_running_gap_and_splits(records: list, base_pace_sec: float | None =
             "elev_diff_m": elev_diff,
         })
 
-    for idx, r in enumerate(pts):
-        d = float(r["distance"])
-        if d >= boundary:
-            push_split(idx, boundary - seg_start_dist)
-            seg_start_idx = idx
-            seg_start_dist = boundary
-            boundary += 1000.0
-            hrs = []
-        if r.get("hr"):
-            hrs.append(float(r["hr"]))
+    for idx in range(1, n):
+        r = pts[idx]
+        prev_d = float(pts[prev_idx]["distance"])
+        curr_d = float(r["distance"])
+        if curr_d < prev_d:
+            continue
 
-    if float(pts[-1]["distance"]) - seg_start_dist >= 200:
-        push_split(n - 1, float(pts[-1]["distance"]) - seg_start_dist)
+        dt = times[idx] - times[prev_idx]
+        seg = curr_d - prev_d
+        step_speed_ms = (seg / dt) if dt > 0 else 0.0
+        dev_ok = (not has_speed_stream) or r.get("speed") is None or float(r["speed"]) >= 3.6
+        is_moving = (
+            0 < dt <= 10
+            and seg > 0
+            and 1.0 <= step_speed_ms <= 12.0
+            and dev_ok
+        )
+
+        if curr_d < boundary:
+            if is_moving:
+                split_m += seg
+                split_s += dt
+                if r.get("hr"):
+                    hrs.append(float(r["hr"]))
+        else:
+            if is_moving:
+                before_m = max(0.0, boundary - prev_d)
+                ratio = min(1.0, before_m / seg) if seg > 0 else 1.0
+                split_m += before_m
+                split_s += dt * ratio
+                if r.get("hr"):
+                    hrs.append(float(r["hr"]))
+                push_split(idx, split_m, split_s)
+
+                after_m = max(0.0, curr_d - boundary)
+                split_m = after_m
+                split_s = dt * (1.0 - ratio)
+                hrs = [float(r["hr"])] if r.get("hr") else []
+            else:
+                push_split(idx, split_m, split_s)
+                split_m = 0.0
+                split_s = 0.0
+                hrs = []
+            seg_start_idx = idx
+            while boundary <= curr_d:
+                boundary += 1000.0
+
+        prev_idx = idx
+
+    if split_m >= 200:
+        push_split(n - 1, split_m, split_s)
 
     return gap_str, splits[:20]
 

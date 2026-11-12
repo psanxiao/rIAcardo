@@ -334,6 +334,39 @@ class TestCoachHelpersAndPayload:
         assert len(splits) == 2
         assert splits[0]["elev_diff_m"] > 30
 
+    def test_compute_running_splits_ignores_pause(self):
+        from api.services.coach_service import _compute_running_gap_and_splits
+        from datetime import datetime, timedelta
+
+        t = datetime(2026, 11, 5, 8, 0, 0)
+        d = 0.0
+        records = []
+        # 1 km at 5:00/km (300s) with a 3-minute pause at 500m
+        for step in range(60):
+            records.append({
+                "time": str(t),
+                "distance": d,
+                "altitude": 10.0,
+                "hr": 150,
+                "speed": 12.0,
+            })
+            t += timedelta(seconds=5)
+            d += 1000.0 / 60.0
+            if step == 30:
+                t += timedelta(seconds=180)  # 3-minute pause
+
+        records.append({
+            "time": str(t),
+            "distance": d,
+            "altitude": 10.0,
+            "hr": 150,
+            "speed": 12.0,
+        })
+
+        _, splits = _compute_running_gap_and_splits(records)
+        assert len(splits) == 1
+        assert splits[0]["avg_pace"] == "5:00"
+
     @patch("api.services.coach_service._call_groq", new_callable=AsyncMock)
     @patch("api.services.coach_service.get_training_load")
     @patch("api.services.coach_service.fetch_user_preferences")

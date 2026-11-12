@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { movingAverage, computeGapPace, computeBestEfforts } from './running';
+import { movingAverage, computeGapPace, computeBestEfforts, computeKmSplits } from './running';
 
 const buildRecords = (slopePerMeter) => {
   const start = Date.UTC(2026, 0, 1, 10, 0, 0);
@@ -50,5 +50,81 @@ describe('computeGapPace', () => {
 
   it('returns null without altitude data', () => {
     expect(computeGapPace([{ time: '2026-01-01 10:00:00', distance: 0, altitude: null }])).toBeNull();
+  });
+});
+
+describe('computeKmSplits', () => {
+  it('excludes activity pauses and stationary periods from per-km pace and HR', () => {
+    const start = Date.UTC(2026, 0, 1, 10, 0, 0);
+    const records = [];
+    let t = start;
+    let d = 0;
+
+    // Km 1: steady 5:00/km (3.3333 m/s), 300s
+    for (let s = 0; s <= 300; s++) {
+      records.push({
+        time: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        distance: d,
+        hr: 150,
+        speed: 12.0,
+      });
+      if (s < 300) {
+        t += 1000;
+        d += 1000 / 300;
+      }
+    }
+
+    // Km 2 first 500m at 4:00/km (4.1667 m/s), 120s
+    for (let s = 1; s <= 120; s++) {
+      t += 1000;
+      d += 500 / 120;
+      records.push({
+        time: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        distance: d,
+        hr: 165,
+        speed: 15.0,
+      });
+    }
+
+    // Slow down to stop (3 seconds at 1.5 km/h) + 3-minute pause (180s gap) + 5 stationary seconds
+    for (let s = 1; s <= 3; s++) {
+      t += 1000;
+      d += 0.3;
+      records.push({
+        time: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        distance: d,
+        hr: 110,
+        speed: 1.5,
+      });
+    }
+    t += 180 * 1000; // 3-minute watch pause
+    for (let s = 1; s <= 5; s++) {
+      t += 1000;
+      records.push({
+        time: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        distance: d,
+        hr: 100,
+        speed: 0,
+      });
+    }
+
+    // Km 2 remaining ~500m at 4:00/km (4.1667 m/s), 120s
+    for (let s = 1; s <= 120; s++) {
+      t += 1000;
+      d += 500 / 120;
+      records.push({
+        time: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        distance: d,
+        hr: 165,
+        speed: 15.0,
+      });
+    }
+
+    const splits = computeKmSplits(records);
+    expect(splits).toHaveLength(2);
+    expect(splits[0].paceSec).toBeCloseTo(300, 0);
+    expect(splits[0].hr).toBeCloseTo(150, 0);
+    expect(splits[1].paceSec).toBeCloseTo(240, 0);
+    expect(splits[1].hr).toBeCloseTo(165, 0);
   });
 });

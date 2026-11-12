@@ -62,6 +62,94 @@ export const computeBestEfforts = (records) => {
   };
 };
 
+// Minimum moving speed (1.0 m/s = 3.6 km/h = 16:40 /km) to exclude pauses and stops
+const MIN_MOVING_SPEED_MS = 1.0;
+const MAX_MOVING_SPEED_MS = 12.0;
+const MAX_STEP_SECONDS = 10;
+
+export const computeKmSplits = (records) => {
+  const valid = (records || []).filter(
+    r => r && r.distance != null && r.time != null && Number.isFinite(toSeconds(r.time))
+  );
+  if (valid.length < 2) return [];
+
+  const hasSpeedStream = valid.some(r => r.speed != null && r.speed > 0);
+  const splits = [];
+  const origin = Number(valid[0].distance);
+  let boundary = origin + 1000;
+  let splitMeters = 0;
+  let splitSeconds = 0;
+  let hrs = [];
+  let prev = valid[0];
+
+  const pushSplit = (meters, seconds) => {
+    if (meters < 100 || seconds <= 0) return;
+    const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+    splits.push({
+      label: `${splits.length + 1}`,
+      paceSec: seconds / (meters / 1000),
+      hr: avgHr,
+      km: meters / 1000,
+    });
+  };
+
+  for (let i = 1; i < valid.length; i++) {
+    const r = valid[i];
+    const prevDist = Number(prev.distance);
+    const currDist = Number(r.distance);
+    if (currDist < prevDist) continue;
+
+    const dt = toSeconds(r.time) - toSeconds(prev.time);
+    const segMeters = currDist - prevDist;
+    const stepSpeedMs = dt > 0 ? segMeters / dt : 0;
+    const deviceMoving = !hasSpeedStream || r.speed == null || Number(r.speed) >= MIN_MOVING_SPEED_MS * 3.6;
+    const isMoving = (
+      dt > 0 &&
+      dt <= MAX_STEP_SECONDS &&
+      segMeters > 0 &&
+      stepSpeedMs >= MIN_MOVING_SPEED_MS &&
+      stepSpeedMs <= MAX_MOVING_SPEED_MS &&
+      deviceMoving
+    );
+
+    if (currDist < boundary) {
+      if (isMoving) {
+        splitMeters += segMeters;
+        splitSeconds += dt;
+        if (r.hr > 0) hrs.push(Number(r.hr));
+      }
+    } else {
+      if (isMoving) {
+        const beforeMeters = Math.max(0, boundary - prevDist);
+        const ratio = segMeters > 0 ? Math.min(1, beforeMeters / segMeters) : 1;
+        splitMeters += beforeMeters;
+        splitSeconds += dt * ratio;
+        if (r.hr > 0) hrs.push(Number(r.hr));
+        pushSplit(splitMeters, splitSeconds);
+
+        const afterMeters = Math.max(0, currDist - boundary);
+        splitMeters = afterMeters;
+        splitSeconds = dt * (1 - ratio);
+        hrs = r.hr > 0 ? [Number(r.hr)] : [];
+      } else {
+        pushSplit(splitMeters, splitSeconds);
+        splitMeters = 0;
+        splitSeconds = 0;
+        hrs = [];
+      }
+      while (boundary <= currDist) {
+        boundary += 1000;
+      }
+    }
+
+    prev = r;
+  }
+
+  pushSplit(splitMeters, splitSeconds);
+
+  return splits;
+};
+
 const haversineMeters = (lat1, lon1, lat2, lon2) => {
   const R = 6371000;
   const toRad = (deg) => (deg * Math.PI) / 180;

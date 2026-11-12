@@ -168,7 +168,7 @@ const ActivityDetail = () => {
       };
     };
     
-    const smoothedSpeed = isRunning ? movingAverage(valid.map(r => r.speed), 30) : [];
+    const smoothedSpeed = isRunning ? movingAverage(valid.map(r => (r.speed >= 3.6 ? r.speed : 0)), 30) : [];
     const smoothedPower = (!isRunning && !isStrength) ? movingAverage(valid.map(r => r.power), 10) : [];
     const smoothedHr = isRunning
       ? movingAverage(valid.map(r => r.hr), 30)
